@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block head %}
+  <style>
+    /* widen page just for this view */
+    main { max-width: 1000px; }
+    .custom-layout { display:flex; gap:50px; align-items:flex-start; justify-content:center; }
+    .custom-form { flex: 1 1 720px; max-width: 840px; }
+    .existing-panel { flex: 0 0 340px; max-width: 340px; text-align: left; margin-top: 50px }
+    .existing-header { margin: 0 0 8px 0; font-size: 20px; font-weight: 600; color: inherit; text-align:center; }
+    .existing-list { max-height: 50vh; overflow: auto; border:1px solid #808080; border-radius:8px; padding:8px; }
+    ul.events.compact { margin:0; padding:0; list-style:none; }
+    ul.events.compact li { display:flex; flex-direction: row; align-items:center; justify-content:space-between; gap:8px; padding:6px 4px; border-bottom:1px dashed #b3b3b3; }
+    ul.events.compact li:last-child { border-bottom:none; }
+    .event-title { font-weight:600; max-width: 240px; overflow:hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .icon-btn { background:transparent; border:1px solid #808080; padding:4px 6px; border-radius:6px; cursor:pointer; }
+    .icon-actions { display:flex; gap:6px; }
+  </style>
+{% endblock %}
+{% block content %}
+  <div class="custom-layout">
+    <div class="custom-form">
+      <h1>Custom Events</h1>
+      <p class="muted">Add custom items to include in your ICS feed. Assignments can be marked done from calendar descriptions.</p>
+
+      <form method="post" action="/custom/add">
+        <div class="row">
+          <div class="col">
+            <label for="name">Name</label>
+            <input autocomplete="off" type="text" id="name" name="event_name" placeholder="Math Test" required>
+          </div>
+          <div class="col">
+            <label for="course_name">Course Name (Location)</label>
+            <input autocomplete="off" type="text" id="course_name" name="course_name" placeholder="Algebra II">
+          </div>
+        </div>
+
+        <label for="description">Description</label>
+        <textarea id="description" name="event_description" placeholder="Details and stuff"></textarea>
+
+        <div class="row">
+          <div class="col">
+            <label for="type">Type</label>
+            <select id="type" name="type">
+              <option value="event">Event</option>
+              <option value="assignment">Assignment (markable)</option>
+            </select>
+          </div>
+          <div class="col">
+            <label for="repeat">Repeat</label>
+            <select id="repeat" name="repeat">
+              <option value="none">Does not repeat</option>
+              <option value="daily">Daily</option>
+              <option value="weekly">Weekly</option>
+              <option value="monthly">Monthly</option>
+              <option value="yearly">Yearly</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="col">
+            <label for="date">Date</label>
+            <input autocomplete="off" type="date" id="date" name="event_date" value="{{ current_date }}" required>
+          </div>
+          <div class="col">
+            <label for="time">Time (optional)</label>
+            <input autocomplete="off" type="time" id="time" name="event_time" value="{{ current_time }}" placeholder="HH:MM">
+          </div>
+        </div>
+
+        <div style="margin-top:24px;">
+          <button type="submit" style="width:100%;">Add</button>
+        </div>
+      </form>
+    </div>
+
+    <aside class="existing-panel">
+      <div class="existing-header">Existing</div>
+      <div class="existing-list">
+        {% if events %}
+          <ul class="events compact">
+            {% for e in events %}
+              {% set past_due = e.repeat == 'none' and e.date < current_date %}
+              <li>
+                <div class="event-title {{ 'muted-2x' if past_due else '' }}" title="{{ e.name }}">{{ e.name }} <span class="{{ 'muted-3x' if past_due else 'muted' }}">&nbsp;• {{ e.date }}</span></div>
+                <div class="icon-actions">
+                  <form method="get" action="/custom/edit/{{ e.id }}">
+                    <button class="icon-btn" type="submit" title="Edit">✏️</button>
+                  </form>
+                  <form method="post" action="/custom/delete/{{ e.id }}" onsubmit="return confirm('Remove this item?');">
+                    <button class="icon-btn" type="submit" title="Delete">🗑️</button>
+                  </form>
+                </div>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="muted" style="text-align:center;">No custom items yet.</p>
+        {% endif %}
+      </div>
+    </aside>
+  </div>
+{% endblock %}

@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block content %}
+  <h1>Settings</h1>
+  <p class="muted">Configure how events are placed in your ICS.</p>
+
+  <form method="post" action="/settings">
+    <div style="margin-bottom:12px;">
+      <label>Stack Events</label>
+      <div>
+        <label style="margin-right:12px;">
+          <input type="checkbox" name="stack_events" value="on" {% if settings.stack_events %}checked{% endif %}>
+          Stack items per day (instead of per-course due times)
+        </label>
+      </div>
+    </div>
+
+    <div style="margin-bottom:12px;">
+      <label for="stack_start_time">Stack Start Time</label>
+      <input type="time" id="stack_start_time" name="stack_start_time" value="{{ settings.stack_start_time }}">
+    </div>
+
+    <div>
+      <button type="submit">Save</button>
+    </div>
+  </form>
+
+  <hr style="margin:24px 0;">
+  <h2>ICS Endpoint</h2>
+  <p>
+    Use <code>/fetch?url=&lt;ICS_URL&gt;</code> as the feed URL in your calendar app. This server retimes Schoology entries
+    based on your settings and includes custom events.
+  </p>
+{% endblock %}
+

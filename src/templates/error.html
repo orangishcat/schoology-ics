@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block content %}
+  <h1>❌ {{ title or 'Error' }}</h1>
+  <p>{{ message }}</p>
+  <p><a href="javascript:window.close()">Close this window</a></p>
+{% endblock %}
+

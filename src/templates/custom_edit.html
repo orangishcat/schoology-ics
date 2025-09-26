@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block content %}
+  <h1>Edit Custom Event</h1>
+  <form method="post" action="/custom/edit/{{ event.id }}">
+    <div class="row">
+      <div class="col">
+        <label for="name">Name</label>
+        <input autocomplete="off" type="text" id="name" name="event_name" value="{{ event.name }}" required>
+      </div>
+      <div class="col">
+        <label for="course_name">Course Name (Location)</label>
+        <input autocomplete="off" type="text" id="course_name" name="course_name" value="{{ event.course_name }}">
+      </div>
+    </div>
+
+    <label for="description">Description</label>
+    <textarea id="description" name="event_description" placeholder="Optional details...">{{ event.description }}</textarea>
+
+    <div class="row">
+      <div class="col">
+        <label for="type">Type</label>
+        <select id="type" name="type">
+          <option value="event" {% if event.type=='event' %}selected{% endif %}>Event</option>
+          <option value="assignment" {% if event.type=='assignment' %}selected{% endif %}>Assignment (markable)</option>
+        </select>
+      </div>
+      <div class="col">
+        <label for="repeat">Repeat</label>
+        <select id="repeat" name="repeat">
+          {% set rep = event.repeat or 'none' %}
+          <option value="none" {% if rep=='none' %}selected{% endif %}>Does not repeat</option>
+          <option value="daily" {% if rep=='daily' %}selected{% endif %}>Daily</option>
+          <option value="weekly" {% if rep=='weekly' %}selected{% endif %}>Weekly</option>
+          <option value="monthly" {% if rep=='monthly' %}selected{% endif %}>Monthly</option>
+          <option value="yearly" {% if rep=='yearly' %}selected{% endif %}>Yearly</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="row">
+      <div class="col">
+        <label for="date">Date</label>
+        <input autocomplete="off" type="date" id="date" name="event_date" value="{{ event.date }}" required>
+      </div>
+      <div class="col">
+        <label for="time">Time (optional)</label>
+        <input autocomplete="off" type="time" id="time" name="event_time" value="{{ event.time }}" placeholder="HH:MM">
+      </div>
+    </div>
+
+    <div style="margin-top:12px; display:flex; gap:8px;">
+      <button type="submit">Save</button>
+      <a href="/custom"><button type="button">Cancel</button></a>
+    </div>
+  </form>
+{% endblock %}
+

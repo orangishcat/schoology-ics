@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+  {% if total and total > 0 %}
+    <h1>✅ Marked Overdue Assignments</h1>
+    <p>Total marked: {{ total }}</p>
+    <ul class="events">
+      {% for iid in marked_ids[:50] %}
+        <li><code>{{ iid }}</code></li>
+      {% endfor %}
+    </ul>
+    {% if total > 50 %}
+      <p class="muted">…and {{ total - 50 }} more.</p>
+    {% endif %}
+  {% else %}
+    <h1>👌 Nothing to mark</h1>
+    <p>No overdue assignments found that needed marking.</p>
+  {% endif %}
+  <p><a href="javascript:window.close()">Close this window</a></p>
+{% endblock %}
+

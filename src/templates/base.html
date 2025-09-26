@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title or 'Schoology ICS' }}</title>
+  <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
+  <link href="/globals.css" rel="stylesheet">
+  {% block head %}{% endblock %}
+  {% if extra_css %}{{ extra_css|safe }}{% endif %}
+  {% if extra_head %}{{ extra_head|safe }}{% endif %}
+</head>
+<body>
+  <header>
+    <nav class="tabs">
+      <a href="/" class="{% if request.path=='/' %}active{% endif %}">Home</a>
+      <a href="/custom" class="{% if request.path.startswith('/custom') %}active{% endif %}">Custom Events</a>
+      <a href="/settings" class="{% if request.path.startswith('/settings') %}active{% endif %}">Settings</a>
+    </nav>
+  </header>
+  <main>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="toasts" id="toast-container">
+          {% for cat, msg in messages %}
+            <div class="flash toast {{ cat }}">{{ msg }}</div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+  <script>
+    (function(){
+      var toasts = document.querySelectorAll('.flash.toast');
+      if (!toasts) return;
+      toasts.forEach(function(el, i){
+        setTimeout(function(){ el.classList.add('hide'); }, 3000 + i*120);
+        el.addEventListener('transitionend', function(){ if (el.classList.contains('hide')) { el.remove(); } });
+      });
+    })();
+  </script>
+</body>
+</html>

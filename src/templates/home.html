@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block head %}
+  <style>
+    #dashboard {
+      text-align: center;
+    }
+
+    #dashboard .row {
+      flex: 1;
+      gap: 12px;
+      margin: 30px;
+    }
+
+    #dashboard .col {
+      flex: 1;
+      border: 1px solid #808080;
+      border-radius: 8px;
+      margin: 12px;
+      padding: 12px;
+      transition: transform .16s ease;
+    }
+
+    #dashboard .col:hover {
+      transform: scale(1.02);
+      background: #eee;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      #dashboard .col:hover {
+        background: #222;
+      }
+    }
+
+    .number {
+      font-size: 36px;
+      font-weight: 600;
+    }
+  </style>
+{% endblock %}
+{% block content %}
+  <div id="dashboard">
+    <h1>Dashboard</h1>
+    <p class="muted">Snapshot from local cache only (overdue shown when online).</p>
+
+    <div class="row">
+      <div class="col">
+        <div class="muted">Total Assignments</div>
+        <div class="number">{{ metrics.total }}</div>
+      </div>
+      <div class="col">
+        <div class="muted">Submitted</div>
+        <div class="number">{{ metrics.submitted }}</div>
+      </div>
+      <div class="col">
+        <div class="muted">Unsubmitted</div>
+        <div class="number">{{ metrics.unsubmitted }}</div>
+      </div>
+      <div class="col">
+        <div class="muted">Overdue</div>
+        <div class="number" {% if metrics.overdue > 0 %} style="color: var(--err);" {% endif %}>{{ metrics.overdue }}</div>
+      </div>
+    </div>
+
+    <a href="/mark-overdue" target="_blank">
+      <button>Mark all overdue as done</button>
+    </a>
+  </div>
+{% endblock %}

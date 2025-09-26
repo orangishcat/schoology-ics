@@ -1,0 +1,6 @@
+# Project exclude paths
+/resources/logs/
+.env
+.venv
+.idea
+certificates
