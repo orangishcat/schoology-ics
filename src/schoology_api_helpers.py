@@ -274,34 +274,30 @@ def get_submission_status(
     if str(item_id) in MANUAL_MARKS:
         return "✅"
 
-    uncompleted_symbol = "‼️" if due_date < datetime.now(tz=CURRENT_TZ) else "⚠️"
+    overdue = due_date < datetime.now(tz=CURRENT_TZ)
+    uncompleted_symbol = "‼️" if overdue else "⚠️"
 
-    cached_submission = assignment_submissions.get(item_id)
-    if cached_submission:
-        checked_at = cached_submission.get("checked_at")
-        if checked_at:
+    # Only use API requests if assignment can be submitted, is unsubmitted, and cache stale
+    if cached_submission := assignment_submissions.get(item_id):
+        if cached_submission.get("has_submission", False):
+            return "✅"
+        elif item_type == "discussion":
+            logger.debug("status_check cached discussion -> 💬")
+            return "💬"
+        elif (cached_submission.get("submissions_disabled", False) or
+              not cached_submission.get("allow_dropbox", True) or
+              cached_submission.get("dropbox_locked", False)):
+            logger.debug("status_check cached disabled -> -")
+            return "-"
+
+        if checked_at := cached_submission.get("checked_at"):
             try:
                 checked_time = datetime.fromisoformat(checked_at)
                 age = (_time.time() - checked_time.timestamp())
                 if age <= SUBMISSION_CACHE_MAX_AGE_SECS:
-                    if cached_submission.get("has_submission", False):
-                        return "✅"
-                    elif item_type == "discussion":
-                        logger.debug("status_check cached discussion -> 💬")
-                        return "💬"
-                    elif (cached_submission.get("submissions_disabled", False) or
-                          not cached_submission.get("allow_dropbox", True) or
-                          cached_submission.get("dropbox_locked", False)):
-                        logger.debug("status_check cached disabled -> -")
-                        return "-"
-                    else:
-                        return uncompleted_symbol
+                    return uncompleted_symbol
             except Exception:
                 pass
-
-    if item_type != "assignment":
-        logger.debug(f"status_check {item_type} (no API) -> 💬")
-        return "💬"
 
     # Custom items or missing section_id: avoid API calls, base on cache/time only
     try:
@@ -340,7 +336,7 @@ def get_submission_status(
             logger.debug("status_check API disabled -> -")
             return "-"
         res = "✅" if has_submission else uncompleted_symbol
-        logger.debug(f"status_check API result -> {res}")
+        logger.debug(f"status_check {item_id} API result -> {res}")
         return res
 
     except Exception as e:

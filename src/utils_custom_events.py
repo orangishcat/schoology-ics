@@ -3,7 +3,6 @@ from datetime import datetime, time, timedelta, timezone
 from typing import List, Dict, Any, Optional, Union
 
 from icalendar import Event, vDatetime
-from loguru import logger
 
 from config import USER_DATA_FILE, CURRENT_TZ, EVENT_LENGTH, get_stack_events, REPEAT_DAYS
 from ical_helpers import course_due_time, set_due_time, clean_description, add_status_symbol

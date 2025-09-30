@@ -8,6 +8,7 @@ from schoology_api_helpers import *
 
 try:
     import setproctitle
+
     setproctitle.setproctitle("sCal")
 except Exception:
     pass
@@ -44,7 +45,8 @@ def proxy_ics():
 
     current_time = datetime.now(tz=CURRENT_TZ)
     _stack_start = get_stack_start_time()
-    assignment_stack_times = defaultdict(lambda: current_time.replace(hour=_stack_start.hour, minute=_stack_start.minute))
+    assignment_stack_times = defaultdict(
+        lambda: current_time.replace(hour=_stack_start.hour, minute=_stack_start.minute))
 
     # Track missing items and cache refresh state
     missing_items = []
@@ -96,7 +98,8 @@ def proxy_ics():
             if not dtstart:
                 logger.warning(f"Skipping event without DTSTART: {ev}")
                 continue
-            if (now_local := datetime.now(tz=CURRENT_TZ)) - (event_start := dtstart.dt.astimezone(CURRENT_TZ)) > timedelta(days=DAYS_BACK):
+            if (now_local := datetime.now(tz=CURRENT_TZ)) - (
+                    event_start := dtstart.dt.astimezone(CURRENT_TZ)) > timedelta(days=DAYS_BACK):
                 old_events += 1
                 continue
             elif event_start - now_local > timedelta(days=DAYS_FWD):
@@ -158,68 +161,70 @@ def proxy_ics():
     except Exception:
         pass
 
-    # If we found missing items and haven't refreshed cache yet, refresh once and retry
-    if missing_items and not cache_refreshed and any(
-            (event_start := ev.get("DTSTART")) and event_start.dt.astimezone(CURRENT_TZ) >
-            datetime.now(tz=CURRENT_TZ) for _, ev in missing_items
-    ):
-        logger.info(f"Found {len(missing_items)} items missing from cache, refreshing...")
-        refresh_cache()
+    if missing_items and not cache_refreshed:
+        new_items = [
+            f"{ev.get("SUMMARY")} {ev.get("DTSTART")}" for _, ev in missing_items if
+            (event_start := ev.get("DTSTART")) and event_start.dt.astimezone(CURRENT_TZ) > datetime.now(tz=CURRENT_TZ)
+        ]
 
-        for item_id, ev in missing_items:
-            sid = ITEM_ID_TO_SECTION.get(item_id)
-            if not sid:
-                logger.info(f"Item {item_id}, {ev.get("DESCRIPTION", "")} still not found after cache refresh")
-            else:
-                logger.info(f"Successfully found item {item_id} after cache refresh")
+        logger.info(
+            f"{len(missing_items)} items missing, {new_items} are new")
 
-            course_title = SECTION_ID_TO_NAME.get(sid, sid) if sid else None
+        if new_items:
+            refresh_cache()
 
-            # Process this event
-            dtstart = ev.get("DTSTART")
-            if not dtstart:
-                logger.warning(f"Skipping event without DTSTART: {ev}")
-                continue
+            for item_id, ev in missing_items:
+                sid = ITEM_ID_TO_SECTION.get(item_id)
+                if not sid:
+                    logger.info(f"Item {item_id}, {ev.get("DESCRIPTION", "")} still not found after cache refresh")
+                else:
+                    logger.info(f"Successfully found item {item_id} after cache refresh")
 
-            sdt = dtstart.dt.astimezone(CURRENT_TZ)
-            if course_title:
-                ev["LOCATION"] = f"{course_title.split(' - ')[0]}"
+                course_title = SECTION_ID_TO_NAME.get(sid, sid) if sid else None
 
-            # Get item type from the event
-            fields = [str(ev.get("URL", "")), str(ev.get("DESCRIPTION", "")),
-                     str(ev.get("SUMMARY", "")), str(ev.get("LOCATION", ""))]
-            item_type = "assessment"
-            for f in fields:
-                m = RE_ASSIGN_OR_EVENT.search(f)
-                if m:
-                    item_type = m.group("type")
-                    break
-                m = RE_DISCUSSION.search(f)
-                if m:
-                    item_type = "discussion"
-                    break
-                m = RE_ANY_SCHO_ITEM.search(f)
-                if m:
-                    item_type = m.group("type")
-                    break
+                # Process this event
+                dtstart = ev.get("DTSTART")
+                if not dtstart:
+                    logger.warning(f"Skipping event without DTSTART: {ev}")
+                    continue
 
-            if get_stack_events():
-                key = sdt.date()
-                desired = assignment_stack_times[key].time()
-                assignment_stack_times[key] += EVENT_LENGTH
-            else:
-                desired = course_due_time(course_title) if course_title else None
+                sdt = dtstart.dt.astimezone(CURRENT_TZ)
+                if course_title:
+                    ev["LOCATION"] = f"{course_title.split(' - ')[0]}"
 
-            if desired:
-                set_due_time(ev, sdt, desired)
+                # Get item type from the event
+                fields = [str(ev.get("URL", "")), str(ev.get("DESCRIPTION", "")),
+                          str(ev.get("SUMMARY", "")), str(ev.get("LOCATION", ""))]
+                item_type = "assessment"
+                for f in fields:
+                    m = RE_ASSIGN_OR_EVENT.search(f)
+                    if m:
+                        item_type = m.group("type")
+                        break
+                    m = RE_DISCUSSION.search(f)
+                    if m:
+                        item_type = "discussion"
+                        break
+                    m = RE_ANY_SCHO_ITEM.search(f)
+                    if m:
+                        item_type = m.group("type")
+                        break
 
-            clean_description(ev, item_id, item_type, sdt, sid, ASSIGNMENT_SUBMISSIONS, get_submission_status)
-            add_status_symbol(ev, sdt, item_id, item_type, sid, ASSIGNMENT_SUBMISSIONS, get_submission_status)
+                if get_stack_events():
+                    key = sdt.date()
+                    desired = assignment_stack_times[key].time()
+                    assignment_stack_times[key] += EVENT_LENGTH
+                else:
+                    desired = course_due_time(course_title) if course_title else None
+
+                if desired:
+                    set_due_time(ev, sdt, desired)
+
+                clean_description(ev, item_id, item_type, sdt, sid, ASSIGNMENT_SUBMISSIONS, get_submission_status)
+                add_status_symbol(ev, sdt, item_id, item_type, sid, ASSIGNMENT_SUBMISSIONS, get_submission_status)
 
     return Response(cal.to_ical(), mimetype="text/calendar; charset=utf-8")
 
-
- 
 
 @app.get("/mark-done/<item_id>")
 def mark_item_done(item_id):
@@ -258,7 +263,6 @@ def unmark_item_done(item_id):
 @app.get("/ok")
 def ok_page():
     return render_template("ok.html"), 200
-
 
 
 @app.get("/mark-overdue")
@@ -341,7 +345,8 @@ def mark_overdue_assignments():
         ), 200
 
     except Exception as e:
-        return render_template("error.html", title="Error", message=f"Failed to mark overdue assignments: {str(e)}"), 500
+        return render_template("error.html", title="Error",
+                               message=f"Failed to mark overdue assignments: {str(e)}"), 500
 
 
 # ------------------ Homepage: Dashboard --------------
@@ -423,7 +428,7 @@ def add_custom():
 
     events = load_custom_events()
     import time as _t
-    eid = f"cst-{int(_t.time()*1000)}"
+    eid = f"cst-{int(_t.time() * 1000)}"
     events.append({
         "id": eid,
         "name": name,
