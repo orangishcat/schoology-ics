@@ -278,10 +278,8 @@ def update_settings(stack_events: bool | None = None, stack_start_time: str | No
             pass
     _write_settings(settings)
 
-# ------------------ MARK AS DONE --------------
-
-# Base URL for mark as done links (will be the server's own URL)
-MARK_DONE_BASE_URL = f"https://{HOST}:{PORT}"
+# Server base URL for constructing links
+BASE_URL = f"https://{HOST}:{PORT}"
 
 # ------------------ REGEX ---------------------
 # Named groups so the handler is robust.

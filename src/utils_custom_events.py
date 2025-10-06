@@ -1,10 +1,11 @@
 import json
+from calendar import monthrange
 from datetime import datetime, time, timedelta, timezone
 from typing import List, Dict, Any, Optional, Union
 
 from icalendar import Event, vDatetime
 
-from config import USER_DATA_FILE, CURRENT_TZ, EVENT_LENGTH, get_stack_events, REPEAT_DAYS
+from config import USER_DATA_FILE, CURRENT_TZ, EVENT_LENGTH, get_stack_events, REPEAT_DAYS, BASE_URL
 from ical_helpers import course_due_time, set_due_time, clean_description, add_status_symbol
 from schoology_api_helpers import ASSIGNMENT_SUBMISSIONS, get_submission_status
 
@@ -15,12 +16,15 @@ repeat_to_timedelta = {
     "yearly": timedelta(days=365)
 }
 
+
 def date_key(e, date_now):
     event_date = datetime.strptime(e.get("date"), "%Y-%m-%d")
     event_time = datetime.strptime(time if (time := e.get("time")) else "23:59", "%H:%M")
     event_dt = event_date.combine(event_date, event_time.time()).replace(tzinfo=CURRENT_TZ)
     overdue = date_now > event_dt
-    return overdue, event_dt.replace(year=9999-event_dt.year, month=12-event_dt.month, day=31-event_dt.day) if overdue else event_dt
+    return overdue, event_dt.replace(year=9999 - event_dt.year, month=12 - event_dt.month,
+                                     day=monthrange(event_dt.year, 12 - event_dt.month)[1]
+                                         - event_dt.day) if overdue else event_dt
 
 
 def load_custom_events() -> List[Dict[str, Any]]:
@@ -68,7 +72,7 @@ def _parse_local_dt(date_str: str, time_str: Optional[str]) -> Optional[datetime
         return None
 
 
-def build_custom_vevent(cev: Dict[str, Any], assignment_stack_times) -> Union[Event, List[Event], None]:
+def build_custom_event(cev: Dict[str, Any], assignment_stack_times) -> Union[Event, List[Event], None]:
     """Construct one or more icalendar Event(s) from a stored custom event dict.
 
     When repeating, expands occurrences within a forward horizon and stacks per date.
@@ -92,8 +96,7 @@ def build_custom_vevent(cev: Dict[str, Any], assignment_stack_times) -> Union[Ev
     ev.add('summary', name)
     if course_name:
         ev.add('location', course_name)
-    if description:
-        ev.add('description', description)
+    ev.add('description', description + f"\n\nEdit: {BASE_URL}/custom/edit/{item_id}")
 
     # Determine start time handling.
     # When stacking is enabled, always stack regardless of an explicit time.
@@ -139,8 +142,8 @@ def build_custom_vevent(cev: Dict[str, Any], assignment_stack_times) -> Union[Ev
             y = d.year + (d.month - 1 + months) // 12
             m = (d.month - 1 + months) % 12 + 1
             day = min(d.day, [31,
-                               29 if y % 4 == 0 and (y % 100 != 0 or y % 400 == 0) else 28,
-                               31, 30, 31, 30, 31, 31, 30, 31, 30, 31][m - 1])
+                              29 if y % 4 == 0 and (y % 100 != 0 or y % 400 == 0) else 28,
+                              31, 30, 31, 30, 31, 31, 30, 31, 30, 31][m - 1])
             return d.replace(year=y, month=m, day=day)
 
         if repeat == 'none' or not repeat:

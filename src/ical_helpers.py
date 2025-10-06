@@ -6,7 +6,7 @@ from icalendar import vDatetime, vDate
 from loguru import logger
 
 from config import COURSE_DUE_TIMES, CURRENT_TZ, EVENT_LENGTH, RE_LINK_ASSIGN_OR_EVENT, RE_LINK_DISCUSSION, \
-    MARK_DONE_BASE_URL
+    BASE_URL
 from manual_mark_helpers import occurrence_token_for_due_date
 
 
@@ -76,16 +76,16 @@ def clean_description(ev, item_id=None, item_type=None, sdt=None, sid=None, assi
         if is_marked_done:
             # Show unmark link for items that are marked as done
             if occ_token:
-                unmark_done_url = f"{MARK_DONE_BASE_URL}/unmark-done/{item_id}?occ={occ_token}"
+                unmark_done_url = f"{BASE_URL}/unmark-done/{item_id}?occ={occ_token}"
             else:
-                unmark_done_url = f"{MARK_DONE_BASE_URL}/unmark-done/{item_id}"
+                unmark_done_url = f"{BASE_URL}/unmark-done/{item_id}"
             action_link = f"\n\n↩️ Unmark as Done: {unmark_done_url}"
         else:
             # Show mark as done link for items that are not marked as done
             if occ_token:
-                mark_done_url = f"{MARK_DONE_BASE_URL}/mark-done/{item_id}?occ={occ_token}"
+                mark_done_url = f"{BASE_URL}/mark-done/{item_id}?occ={occ_token}"
             else:
-                mark_done_url = f"{MARK_DONE_BASE_URL}/mark-done/{item_id}"
+                mark_done_url = f"{BASE_URL}/mark-done/{item_id}"
             action_link = f"\n\n📝 Mark as Done: {mark_done_url}"
 
         desc += action_link

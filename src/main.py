@@ -1,7 +1,8 @@
 from collections import defaultdict
+from typing import Literal
 
 from flask import Flask, request, Response, redirect, url_for, render_template, flash
-from icalendar import Calendar
+from icalendar import Calendar, Event
 
 from ical_helpers import *
 from schoology_api_helpers import *
@@ -17,6 +18,77 @@ except Exception:
 app = Flask(__name__, template_folder=str((Path(__file__).parent / "templates").resolve()))
 app.secret_key = "scal-secret-key"
 
+
+def process_event(ev: Event, assignment_stack_times: defaultdict) -> Literal["invalid", "missing", "valid", "old", "new"]:
+    fields = [
+        str(ev.get("URL", "")),
+        str(ev.get("DESCRIPTION", "")),
+        str(ev.get("SUMMARY", "")),
+        str(ev.get("LOCATION", "")),
+    ]
+    item_id = None
+    item_type = None
+
+    for f in fields:
+        # assignments / events
+        m = RE_ASSIGN_OR_EVENT.search(f)
+        if m:
+            item_id = m.group("id")
+            item_type = m.group("type")
+            break
+        # discussions
+        m = RE_DISCUSSION.search(f)
+        if m:
+            item_id = m.group("id")
+            item_type = "discussion"
+            break
+        # fallback: any Schoology item type/id so we can still stack
+        m = RE_ANY_SCHO_ITEM.search(f)
+        if m:
+            item_id = m.group("id")
+            item_type = m.group("type")
+            break
+
+    if not item_id:
+        logger.warning(f"Event does not have Schoology URL: {ev}")
+        return "invalid"
+
+    # Adjust DTSTART/DTEND time on this event
+    dtstart = ev.get("DTSTART")
+    if not dtstart:
+        logger.warning(f"Event does not have DTSTART: {ev}")
+        return "invalid"
+    if (now_local := datetime.now(tz=CURRENT_TZ)) - (
+            event_start := dtstart.dt.astimezone(CURRENT_TZ)) > timedelta(days=DAYS_BACK):
+        return "old"
+    elif event_start - now_local > timedelta(days=DAYS_FWD):
+        return "new"
+
+    sdt = dtstart.dt.astimezone(CURRENT_TZ)
+
+    sid = ITEM_ID_TO_SECTION.get(item_id)
+
+    course_title = None
+    desired = None
+
+    if sid:
+        course_title = SECTION_ID_TO_NAME.get(sid)
+        if course_title:
+            ev["LOCATION"] = f"{course_title.split(' - ')[0]}"
+
+    if get_stack_events():
+        key = sdt.date()
+        desired = assignment_stack_times[key].time()
+        assignment_stack_times[key] += EVENT_LENGTH
+    elif course_title:
+        desired = course_due_time(course_title) if course_title else None
+
+    if desired:
+        set_due_time(ev, sdt, desired)
+
+    clean_description(ev, item_id, item_type, sdt, sid, ASSIGNMENT_SUBMISSIONS, get_submission_status)
+    add_status_symbol(ev, sdt, item_id, item_type, sid, ASSIGNMENT_SUBMISSIONS, get_submission_status)
+    return "valid"
 
 @app.get("/fetch")
 @logger.catch
@@ -60,79 +132,16 @@ def proxy_ics():
         new_events = 0
 
         for ev in cal.walk("VEVENT"):
-            fields = [
-                str(ev.get("URL", "")),
-                str(ev.get("DESCRIPTION", "")),
-                str(ev.get("SUMMARY", "")),
-                str(ev.get("LOCATION", "")),
-            ]
-            item_id = None
-            item_type = None
-
-            for f in fields:
-                # assignments / events
-                m = RE_ASSIGN_OR_EVENT.search(f)
-                if m:
-                    item_id = m.group("id")
-                    item_type = m.group("type")
-                    break
-                # discussions
-                m = RE_DISCUSSION.search(f)
-                if m:
-                    item_id = m.group("id")
-                    item_type = "discussion"
-                    break
-                # fallback: any Schoology item type/id so we can still stack
-                m = RE_ANY_SCHO_ITEM.search(f)
-                if m:
-                    item_id = m.group("id")
-                    item_type = m.group("type")
-                    break
-
-            if not item_id:
-                logger.warning(f"Skipping event without Schoology URL: {ev}")
-                continue
-
-            # Adjust DTSTART/DTEND time on this event
-            dtstart = ev.get("DTSTART")
-            if not dtstart:
-                logger.warning(f"Skipping event without DTSTART: {ev}")
-                continue
-            if (now_local := datetime.now(tz=CURRENT_TZ)) - (
-                    event_start := dtstart.dt.astimezone(CURRENT_TZ)) > timedelta(days=DAYS_BACK):
-                old_events += 1
-                continue
-            elif event_start - now_local > timedelta(days=DAYS_FWD):
-                new_events += 1
-                continue
-
-            sdt = dtstart.dt.astimezone(CURRENT_TZ)
-
-            # Map item id -> section id -> course title
-            sid = ITEM_ID_TO_SECTION.get(item_id)
-
-            # If section is unknown and it's not a discussion, only skip when not stacking.
-            # When stacking, proceed so items still stack at the default times.
-            if not sid and not item_type == "discussion":
-                missing_items.append((item_id, ev))
-                continue
-            else:
-                course_title = SECTION_ID_TO_NAME.get(sid)
-                if course_title:
-                    ev["LOCATION"] = f"{course_title.split(' - ')[0]}"
-
-            if get_stack_events():
-                key = sdt.date()
-                desired = assignment_stack_times[key].time()
-                assignment_stack_times[key] += EVENT_LENGTH
-            else:
-                desired = course_due_time(course_title) if course_title else None
-
-            if desired:
-                set_due_time(ev, sdt, desired)
-
-            clean_description(ev, item_id, item_type, sdt, sid, ASSIGNMENT_SUBMISSIONS, get_submission_status)
-            add_status_symbol(ev, sdt, item_id, item_type, sid, ASSIGNMENT_SUBMISSIONS, get_submission_status)
+            res = process_event(ev, assignment_stack_times)
+            match res:
+                case "invalid":
+                    continue
+                case "missing":
+                    missing_items.append((item_id, ev))
+                case "old":
+                    old_events += 1
+                case "new":
+                    new_events += 1
 
         logger.info(f'Skipped {old_events} old events and {new_events} new events.')
 
@@ -140,11 +149,11 @@ def proxy_ics():
 
     # Append custom events (if any)
     try:
-        from utils_custom_events import load_custom_events, build_custom_vevent
+        from utils_custom_events import load_custom_events, build_custom_event
         custom_events = load_custom_events()
         for cev in custom_events:
             try:
-                ve = build_custom_vevent(cev, assignment_stack_times)
+                ve = build_custom_event(cev, assignment_stack_times)
                 if ve is None:
                     continue
                 # Support multiple events for repeats with per-date stacking
@@ -180,48 +189,7 @@ def proxy_ics():
                 else:
                     logger.info(f"Successfully found item {item_id} after cache refresh")
 
-                course_title = SECTION_ID_TO_NAME.get(sid, sid) if sid else None
-
-                # Process this event
-                dtstart = ev.get("DTSTART")
-                if not dtstart:
-                    logger.warning(f"Skipping event without DTSTART: {ev}")
-                    continue
-
-                sdt = dtstart.dt.astimezone(CURRENT_TZ)
-                if course_title:
-                    ev["LOCATION"] = f"{course_title.split(' - ')[0]}"
-
-                # Get item type from the event
-                fields = [str(ev.get("URL", "")), str(ev.get("DESCRIPTION", "")),
-                          str(ev.get("SUMMARY", "")), str(ev.get("LOCATION", ""))]
-                item_type = "assessment"
-                for f in fields:
-                    m = RE_ASSIGN_OR_EVENT.search(f)
-                    if m:
-                        item_type = m.group("type")
-                        break
-                    m = RE_DISCUSSION.search(f)
-                    if m:
-                        item_type = "discussion"
-                        break
-                    m = RE_ANY_SCHO_ITEM.search(f)
-                    if m:
-                        item_type = m.group("type")
-                        break
-
-                if get_stack_events():
-                    key = sdt.date()
-                    desired = assignment_stack_times[key].time()
-                    assignment_stack_times[key] += EVENT_LENGTH
-                else:
-                    desired = course_due_time(course_title) if course_title else None
-
-                if desired:
-                    set_due_time(ev, sdt, desired)
-
-                clean_description(ev, item_id, item_type, sdt, sid, ASSIGNMENT_SUBMISSIONS, get_submission_status)
-                add_status_symbol(ev, sdt, item_id, item_type, sid, ASSIGNMENT_SUBMISSIONS, get_submission_status)
+                process_event(ev, assignment_stack_times)
 
     return Response(cal.to_ical(), mimetype="text/calendar; charset=utf-8")
 

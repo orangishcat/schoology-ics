@@ -297,15 +297,17 @@ def get_submission_status(
                 if age <= SUBMISSION_CACHE_MAX_AGE_SECS:
                     return uncompleted_symbol
             except Exception:
+                logger.debug(f"status_check cached {item_id} invalid time {checked_at} -> {uncompleted_symbol}")
                 pass
 
     # Custom items or missing section_id: avoid API calls, base on cache/time only
     try:
         if (custom := str(section_id).lower() == "custom") or not section_id:
             if not custom:
-                logger.debug(f"status_check no section -> {uncompleted_symbol}")
+                logger.debug(f"status_check no section {item_id} -> {uncompleted_symbol}")
             return uncompleted_symbol
     except Exception:
+        logger.debug(f"status_check exception {item_id} -> ?")
         return uncompleted_symbol
 
     try:
