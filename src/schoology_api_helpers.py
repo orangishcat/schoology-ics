@@ -2,10 +2,11 @@ import time as _time
 
 import schoolopy
 from flask import abort
+from icalendar import Event
 from requests_oauthlib import OAuth1
 
 from config import *
-from manual_mark_helpers import manual_mark_key, occurrence_token_for_due_date
+from manual_mark_helpers import get_occ_token, normalize_occurrence_token
 
 
 # ------------------ SCHOOL0GY API -------------
@@ -103,14 +104,29 @@ def check_assignment_submission(assignment_id: str, section_id: str, user_id: st
         }
 
 
-def refresh_cache():
-    """Force refresh and update in-memory maps."""
+def refresh_cache(use_cache_window: bool = True, collect_events: bool = False):
+    """
+    Force refresh and update in-memory maps.
+
+    Args:
+        use_cache_window: If False, ignore cached generated_at when choosing the event window.
+        collect_events: If True, return the list of events fetched during the refresh.
+    """
     global SECTION_ID_TO_NAME, ITEM_ID_TO_SECTION, ASSIGNMENT_SUBMISSIONS
     logger.info("Forcing cache refresh...")
-    a, b, c = load_sections_and_items(force_refresh=True)
+    data = load_sections_and_items(
+        force_refresh=True,
+        use_cache_window=use_cache_window,
+        collect_events=collect_events,
+    )
+    if collect_events:
+        a, b, c, events = data
+    else:
+        a, b, c = data
     SECTION_ID_TO_NAME.clear(); SECTION_ID_TO_NAME.update(a)
     ITEM_ID_TO_SECTION.clear(); ITEM_ID_TO_SECTION.update(b)
     ASSIGNMENT_SUBMISSIONS.clear(); ASSIGNMENT_SUBMISSIONS.update(c)
+    return events if collect_events else None
 
 
 def _ymd(dt: datetime) -> str:
@@ -121,8 +137,11 @@ def _ymd(dt: datetime) -> str:
 def _fetch_user_events_window(user_id: str,
                               start_date: datetime,
                               end_date: datetime,
-                              page_size: int = 500):
+                              page_size: int = 200):
     """Iterate calendar events for the user within [start_date, end_date]."""
+
+    if page_size > 200:
+        raise ValueError("Page size must be <= 200 due to Schoology API limitation.")
 
     start_offset = 0
     while True:
@@ -143,8 +162,16 @@ def _fetch_user_events_window(user_id: str,
         start_offset += page_size
 
 
-def load_sections_and_items(force_refresh=False):
-    """Build section->name and item->section maps; preserve submissions. Uses cache generated_at as events start if present."""
+def load_sections_and_items(
+        force_refresh: bool = False,
+        use_cache_window: bool = True,
+        collect_events: bool = False
+):
+    """
+    Build section->name and item->section maps; preserve submissions.
+
+    By default, uses cache generated_at as the event window start when available.
+    """
     # Load cache; preserve submissions; early-return if fresh
     existing_assignment_submissions = {}
     cached = {}
@@ -195,13 +222,24 @@ def load_sections_and_items(force_refresh=False):
             cache_start = datetime.fromisoformat(ga)
         except Exception:
             cache_start = None
-    window_start = cache_start or (now_local - timedelta(days=DAYS_BACK))
+    window_start = cache_start if (use_cache_window and cache_start) else (now_local - timedelta(days=DAYS_BACK))
     window_end = now_local + timedelta(days=DAYS_FWD)
 
     item_id_to_section: dict[str, str] = cached.get("item_id_to_section", {})
+    collected_events: list[dict[str, str]] | None = [] if collect_events else None
 
     try:
         for ev in _fetch_user_events_window(SCHO_USER_UID, window_start, window_end):
+            if collect_events and collected_events is not None:
+                summary = str(ev.get("title") or ev.get("summary") or "")
+                description = str(ev.get("description") or ev.get("body") or "")
+                collected_events.append(
+                    {
+                        "id": str(ev.get("id") or ""),
+                        "summary": summary,
+                        "description": description,
+                    }
+                )
             # Determine owning section: prefer explicit section_id, fallback realm_id
             sid = None
             if (sid := str(ev.get("section_id") or "")) and sid in section_id_to_name:
@@ -238,11 +276,15 @@ def load_sections_and_items(force_refresh=False):
         logger.error(f"Failed to write cache: {e}")
 
     logger.info(f"Cache build took {(_time.perf_counter() - start_time) / 1e9:.3f}s")
+    logger.debug(f"Date range: {window_start.date()} to {window_end.date()}")
 
+    if collected_events is not None:
+        return section_id_to_name, item_id_to_section, assignment_submissions, collected_events
     return section_id_to_name, item_id_to_section, assignment_submissions
 
 
 def get_submission_status(
+        ev: Event,
         item_id: str,
         due_date: datetime,
         section_id: str,
@@ -261,17 +303,23 @@ def get_submission_status(
     Only checks API for assignments not in cache or with stale cache.
     For discussions, only checks for manual marking (no API submission check).
     """
+    name = ev.get("SUMMARY")
+
     if not SCHO_USER_UID:
-        logger.debug("status_check no UID -> ?")
+        logger.debug(f"status_check {name} no UID -> ?")
         return "?"
 
-    occ_token = occurrence_token_for_due_date(due_date)
-    if occ_token:
-        occ_key = manual_mark_key(item_id, occ_token)
-        if occ_key in MANUAL_MARKS:
-            return "✅"
+    item_id_str = str(item_id)
+    occ_token = normalize_occurrence_token(get_occ_token(due_date))
+    manual_entry = MANUAL_MARKS.get(item_id_str)
 
-    if str(item_id) in MANUAL_MARKS:
+    if isinstance(manual_entry, dict):
+        completed = bool(occ_token) and manual_entry.get(occ_token, False)
+        logger.info(f"status_check {name} occ={occ_token} -> {completed}")
+        if completed:
+            return "✅"
+    elif manual_entry:
+        logger.info(f"status_check {name} manual -> True")
         return "✅"
 
     overdue = due_date < datetime.now(tz=CURRENT_TZ)
@@ -282,12 +330,12 @@ def get_submission_status(
         if cached_submission.get("has_submission", False):
             return "✅"
         elif item_type == "discussion":
-            logger.debug("status_check cached discussion -> 💬")
+            logger.info(f"status_check {name} cached discussion -> 💬")
             return "💬"
         elif (cached_submission.get("submissions_disabled", False) or
               not cached_submission.get("allow_dropbox", True) or
               cached_submission.get("dropbox_locked", False)):
-            logger.debug("status_check cached disabled -> -")
+            logger.info(f"status_check {name} cached disabled -> -")
             return "-"
 
         if checked_at := cached_submission.get("checked_at"):
@@ -297,17 +345,16 @@ def get_submission_status(
                 if age <= SUBMISSION_CACHE_MAX_AGE_SECS:
                     return uncompleted_symbol
             except Exception:
-                logger.debug(f"status_check cached {item_id} invalid time {checked_at} -> {uncompleted_symbol}")
-                pass
+                logger.info(f"status_check cached {name} invalid time {checked_at} -> {uncompleted_symbol}")
 
     # Custom items or missing section_id: avoid API calls, base on cache/time only
     try:
         if (custom := str(section_id).lower() == "custom") or not section_id:
             if not custom:
-                logger.debug(f"status_check no section {item_id} -> {uncompleted_symbol}")
+                logger.info(f"status_check no section {name} -> {uncompleted_symbol}")
             return uncompleted_symbol
     except Exception:
-        logger.debug(f"status_check exception {item_id} -> ?")
+        logger.warning(f"status_check exception {name} -> ?")
         return uncompleted_symbol
 
     try:
@@ -315,7 +362,7 @@ def get_submission_status(
 
         if isinstance(result, dict):
             if result.get("error"):
-                logger.debug("status_check API error -> ?")
+                logger.warning(f"status_check {name} API error -> ?")
                 return "?"
             has_submission = bool(result.get("has_submission", False))
             submissions_disabled = bool(result.get("submissions_disabled", False))
@@ -335,7 +382,7 @@ def get_submission_status(
             logger.error(f"Failed to update submission cache: {e}")
 
         if submissions_disabled:
-            logger.debug("status_check API disabled -> -")
+            logger.info(f"status_check API {name} disabled -> -")
             return "-"
         res = "✅" if has_submission else uncompleted_symbol
         logger.debug(f"status_check {item_id} API result -> {res}")
@@ -345,10 +392,10 @@ def get_submission_status(
         if is_offline_error(e):
             ind = offline_indicator(e) or NO_WIFI_MSG
             logger.info(ind)
-            logger.debug("status_check offline -> ?")
+            logger.info(f"status_check {name} offline -> ?")
             return "?"
         logger.error(f"Error checking submission status: {e}")
-        logger.debug("status_check exception -> ?")
+        logger.info(f"status_check {name} exception -> ?")
         return "?"
 
 
@@ -370,14 +417,28 @@ def _save_user_data(d: dict) -> None:
         logger.error(f"Failed to write user data: {e}")
 
 
-def _get_manual_marks() -> set[str]:
+def _get_manual_marks() -> dict[str, bool | dict[str, bool]]:
     d = _load_user_data()
     mm = d.get("manual_done") or {}
     if isinstance(mm, dict):
-        return {k for k, v in mm.items() if v}
+        cleaned: dict[str, bool | dict[str, bool]] = {}
+        for raw_id, raw_val in mm.items():
+            item_id = str(raw_id)
+            if isinstance(raw_val, dict):
+                occ_map: dict[str, bool] = {}
+                for occ_token, occ_flag in raw_val.items():
+                    if occ_flag:
+                        norm = normalize_occurrence_token(occ_token)
+                        if norm:
+                            occ_map[norm] = True
+                if occ_map:
+                    cleaned[item_id] = occ_map
+            elif raw_val:
+                cleaned[item_id] = True
+        return cleaned
     if isinstance(mm, list):
-        return set(map(str, mm))
-    return set()
+        return {str(mark): True for mark in mm}
+    return {}
 
 
 MANUAL_MARKS = _get_manual_marks()
@@ -389,17 +450,28 @@ def mark_item_as_done(item_id: str, occurrence_token: str | None = None):
     """
     try:
         d = _load_user_data()
-        manual = d.get("manual_done") or {}
-        key = manual_mark_key(item_id, occurrence_token)
-        manual[key] = True
-        d["manual_done"] = manual
-        _save_user_data(d)
-        MANUAL_MARKS.add(key)
+        manual_raw = d.get("manual_done")
+        if not isinstance(manual_raw, dict):
+            manual_raw = {}
+        item_id_str = str(item_id)
+        norm_token = normalize_occurrence_token(occurrence_token)
 
-        if occurrence_token:
-            logger.info(f"Marked item {item_id} (occ={occurrence_token}) as done")
+        if norm_token:
+            existing = manual_raw.get(item_id_str)
+            if not isinstance(existing, dict):
+                existing = {}
+            existing[norm_token] = True
+            manual_raw[item_id_str] = existing
+            MANUAL_MARKS[item_id_str] = dict(existing)
+            log_msg = f"Marked item {item_id_str} (occ={norm_token}) as done"
         else:
-            logger.info(f"Marked item {item_id} as done")
+            manual_raw[item_id_str] = True
+            MANUAL_MARKS[item_id_str] = True
+            log_msg = f"Marked item {item_id_str} as done"
+
+        d["manual_done"] = manual_raw
+        _save_user_data(d)
+        logger.info(log_msg)
 
     except Exception as e:
         logger.error(f"Error marking item as done: {e}")
@@ -413,19 +485,39 @@ def unmark_item_as_done(item_id: str, occurrence_token: str | None = None):
     """
     try:
         d = _load_user_data()
-        manual = d.get("manual_done") or {}
-        key = manual_mark_key(item_id, occurrence_token)
-        if key in manual:
-            manual.pop(key, None)
-            if occurrence_token:
-                logger.info(f"Unmarked item {item_id} (occ={occurrence_token}) as done")
+        manual_raw = d.get("manual_done")
+        if not isinstance(manual_raw, dict):
+            manual_raw = {}
+        item_id_str = str(item_id)
+        norm_token = normalize_occurrence_token(occurrence_token)
+        updated = False
+
+        if norm_token:
+            existing = manual_raw.get(item_id_str)
+            if isinstance(existing, dict) and norm_token in existing:
+                existing.pop(norm_token, None)
+                updated = True
+                if existing:
+                    manual_raw[item_id_str] = existing
+                    MANUAL_MARKS[item_id_str] = dict(existing)
+                else:
+                    manual_raw.pop(item_id_str, None)
+                    MANUAL_MARKS.pop(item_id_str, None)
+                logger.info(f"Unmarked item {item_id_str} (occ={norm_token}) as done")
             else:
-                logger.info(f"Unmarked item {item_id} as done")
+                logger.info(f"Item {item_id_str} (occ={norm_token}) was not marked as done")
         else:
-            logger.info(f"Item {item_id} ({occurrence_token or 'all'}) was not marked as done")
-        d["manual_done"] = manual
-        _save_user_data(d)
-        MANUAL_MARKS.discard(key)
+            if item_id_str in manual_raw:
+                manual_raw.pop(item_id_str, None)
+                updated = True
+                logger.info(f"Unmarked item {item_id_str} as done")
+            else:
+                logger.info(f"Item {item_id_str} (all occurrences) was not marked as done")
+            MANUAL_MARKS.pop(item_id_str, None)
+
+        if updated:
+            d["manual_done"] = manual_raw
+            _save_user_data(d)
 
     except Exception as e:
         logger.error(f"Error unmarking item as done: {e}")

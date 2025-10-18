@@ -6,7 +6,7 @@ from typing import Optional
 from config import CURRENT_TZ
 
 
-def occurrence_token_for_due_date(due: datetime | date | None) -> Optional[str]:
+def get_occ_token(due: datetime | date | None) -> Optional[str]:
     """Return a stable token that identifies an item occurrence on a specific local date/time."""
     if due is None:
         return None
@@ -21,12 +21,12 @@ def occurrence_token_for_due_date(due: datetime | date | None) -> Optional[str]:
     else:
         return None
 
-    return local_dt.strftime("%Y%m%dT%H%M%S")
+    return local_dt.strftime("%Y%m%dT%H%M")
 
 
-def manual_mark_key(item_id: str, occurrence_token: str | None) -> str:
-    """Build the storage key used for manual marks."""
-    item = str(item_id)
-    if occurrence_token:
-        return f"{item}::{occurrence_token}"
-    return item
+def normalize_occurrence_token(token: str | None) -> Optional[str]:
+    """Normalize an occurrence token to minute precision."""
+    if not token:
+        return None
+    token_str = str(token)
+    return token_str[:13]

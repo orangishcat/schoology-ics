@@ -1,13 +1,10 @@
-import re
-from datetime import datetime, timedelta, time, timezone
+from datetime import timezone
 from typing import Optional
 
 from icalendar import vDatetime, vDate
-from loguru import logger
 
-from config import COURSE_DUE_TIMES, CURRENT_TZ, EVENT_LENGTH, RE_LINK_ASSIGN_OR_EVENT, RE_LINK_DISCUSSION, \
-    BASE_URL
-from manual_mark_helpers import occurrence_token_for_due_date
+from config import *
+from manual_mark_helpers import get_occ_token
 
 
 def course_due_time(course_title: str) -> Optional[time]:
@@ -68,24 +65,24 @@ def clean_description(ev, item_id=None, item_type=None, sdt=None, sid=None, assi
         # Check if item is already marked as done
         is_marked_done = False
         if assignment_submissions and get_submission_status_func and sdt and sid:
-            submission_status = get_submission_status_func(item_id, sdt, sid, assignment_submissions, item_type)
+            submission_status = get_submission_status_func(ev, item_id, sdt, sid, assignment_submissions, item_type)
             is_marked_done = (submission_status == "✅")
 
-        occ_token = occurrence_token_for_due_date(sdt)
+        occ_token = get_occ_token(sdt)
 
         if is_marked_done:
             # Show unmark link for items that are marked as done
             if occ_token:
-                unmark_done_url = f"{BASE_URL}/unmark-done/{item_id}?occ={occ_token}"
+                unmark_done_url = f"{BASE_URL}/api/unmark-done/{item_id}?occ={occ_token}"
             else:
-                unmark_done_url = f"{BASE_URL}/unmark-done/{item_id}"
+                unmark_done_url = f"{BASE_URL}/api/unmark-done/{item_id}"
             action_link = f"\n\n↩️ Unmark as Done: {unmark_done_url}"
         else:
             # Show mark as done link for items that are not marked as done
             if occ_token:
-                mark_done_url = f"{BASE_URL}/mark-done/{item_id}?occ={occ_token}"
+                mark_done_url = f"{BASE_URL}/api/mark-done/{item_id}?occ={occ_token}"
             else:
-                mark_done_url = f"{BASE_URL}/mark-done/{item_id}"
+                mark_done_url = f"{BASE_URL}/api/mark-done/{item_id}"
             action_link = f"\n\n📝 Mark as Done: {mark_done_url}"
 
         desc += action_link
@@ -95,11 +92,11 @@ def clean_description(ev, item_id=None, item_type=None, sdt=None, sid=None, assi
 
 def add_status_symbol(ev, sdt, item_id, item_type, sid, ASSIGNMENT_SUBMISSIONS, get_submission_status_func):
     if item_type == "assignment":
-        submission_status = get_submission_status_func(item_id, sdt, sid, ASSIGNMENT_SUBMISSIONS, item_type)
+        submission_status = get_submission_status_func(ev, item_id, sdt, sid, ASSIGNMENT_SUBMISSIONS, item_type)
         ev["SUMMARY"] = f"{submission_status} {ev['SUMMARY']}"
     elif item_type == "discussion":
         # Check if discussion is manually marked as done
-        submission_status = get_submission_status_func(item_id, sdt, sid, ASSIGNMENT_SUBMISSIONS, item_type)
+        submission_status = get_submission_status_func(ev, item_id, sdt, sid, ASSIGNMENT_SUBMISSIONS, item_type)
         if submission_status == "✅":
             ev["SUMMARY"] = f"✅ {ev['SUMMARY']}"
         else:

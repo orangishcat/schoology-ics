@@ -194,7 +194,7 @@ def proxy_ics():
     return Response(cal.to_ical(), mimetype="text/calendar; charset=utf-8")
 
 
-@app.get("/mark-done/<item_id>")
+@app.get("/api/mark-done/<item_id>")
 def mark_item_done(item_id):
     """
     Mark an assignment or discussion as done by storing it in the cache.
@@ -211,7 +211,7 @@ def mark_item_done(item_id):
         return render_template("error.html", title="Error", message=f"Failed to mark item as done: {str(e)}"), 500
 
 
-@app.get("/unmark-done/<item_id>")
+@app.get("/api/unmark-done/<item_id>")
 def unmark_item_done(item_id):
     """
     Unmark an assignment or discussion as done by removing it from the cache.
@@ -226,6 +226,29 @@ def unmark_item_done(item_id):
         return redirect(url_for('ok_page'), code=303)
     except Exception as e:
         return render_template("error.html", title="Error", message=f"Failed to unmark item: {str(e)}"), 500
+
+
+@app.get("/api/refresh-item-map")
+def refresh_item_map():
+    """Force refresh the cached item->section map via the Schoology API."""
+    try:
+        events = refresh_cache(use_cache_window=False, collect_events=True) or []
+        item_map_size = len(ITEM_ID_TO_SECTION)
+        section_count = len(SECTION_ID_TO_NAME)
+        return render_template(
+            "refresh_item_map.html",
+            events=events,
+            item_map_size=item_map_size,
+            section_count=section_count,
+            days_back=DAYS_BACK,
+        ), 200
+    except Exception as e:
+        logger.exception("Failed to refresh Schoology cache")
+        return render_template(
+            "error.html",
+            title="Error",
+            message=f"Failed to refresh Schoology cache: {str(e)}"
+        ), 500
 
 
 @app.get("/ok")
@@ -335,7 +358,11 @@ def home():
                 cached = {}
         subs = cached.get("assignment_submissions") or {}
 
-        manual_item_ids = {str(mark).split("::", 1)[0] for mark in MANUAL_MARKS}
+        manual_item_ids = {
+            str(item_id)
+            for item_id, mark_val in MANUAL_MARKS.items()
+            if (isinstance(mark_val, dict) and any(mark_val.values())) or (not isinstance(mark_val, dict) and bool(mark_val))
+        }
 
         submitted = 0
         unsubmitted = 0

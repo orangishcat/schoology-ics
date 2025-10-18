@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block content %}
+  <h1>Refreshed Item Map</h1>
+  <p>Loaded {{ events|length }} events from the past {{ days_back }} days. Item map size: {{ item_map_size }},
+    Sections: {{ section_count }}.</p>
+  {% if events %}
+    {% for event in events %}
+      <p>{{ event.summary }}</p>
+    {% endfor %}
+  {% else %}
+    <p>No events returned for the refresh window.</p>
+  {% endif %}
+{% endblock %}
