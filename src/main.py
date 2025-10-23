@@ -2,7 +2,7 @@ from collections import defaultdict
 from typing import Literal
 
 from flask import Flask, request, Response, redirect, url_for, render_template, flash
-from icalendar import Calendar, Event
+from icalendar import Calendar
 
 from ical_helpers import *
 from schoology_api_helpers import *
@@ -19,7 +19,8 @@ app = Flask(__name__, template_folder=str((Path(__file__).parent / "templates").
 app.secret_key = "scal-secret-key"
 
 
-def process_event(ev: Event, assignment_stack_times: defaultdict) -> Literal["invalid", "missing", "valid", "old", "new"]:
+def process_event(ev: Event, assignment_stack_times: defaultdict) -> tuple[Literal["invalid", "missing", "valid", "old", "new"], Event, str | None]:
+    ev = ev.copy()
     fields = [
         str(ev.get("URL", "")),
         str(ev.get("DESCRIPTION", "")),
@@ -51,21 +52,20 @@ def process_event(ev: Event, assignment_stack_times: defaultdict) -> Literal["in
 
     if not item_id:
         logger.warning(f"Event does not have Schoology URL: {ev}")
-        return "invalid"
+        return "invalid", ev, item_id
 
     # Adjust DTSTART/DTEND time on this event
     dtstart = ev.get("DTSTART")
     if not dtstart:
         logger.warning(f"Event does not have DTSTART: {ev}")
-        return "invalid"
+        return "invalid", ev, item_id
     if (now_local := datetime.now(tz=CURRENT_TZ)) - (
             event_start := dtstart.dt.astimezone(CURRENT_TZ)) > timedelta(days=DAYS_BACK):
-        return "old"
+        return "old", ev, item_id
     elif event_start - now_local > timedelta(days=DAYS_FWD):
-        return "new"
+        return "new", ev, item_id
 
     sdt = dtstart.dt.astimezone(CURRENT_TZ)
-
     sid = ITEM_ID_TO_SECTION.get(item_id)
 
     course_title = None
@@ -77,18 +77,18 @@ def process_event(ev: Event, assignment_stack_times: defaultdict) -> Literal["in
             ev["LOCATION"] = f"{course_title.split(' - ')[0]}"
 
     if get_stack_events():
-        key = sdt.date()
-        desired = assignment_stack_times[key].time()
-        assignment_stack_times[key] += EVENT_LENGTH
+        desired = assignment_stack_times[sdt.date()].time()
     elif course_title:
         desired = course_due_time(course_title) if course_title else None
 
     if desired:
         set_due_time(ev, sdt, desired)
 
-    clean_description(ev, item_id, item_type, sdt, sid, ASSIGNMENT_SUBMISSIONS, get_submission_status)
-    add_status_symbol(ev, sdt, item_id, item_type, sid, ASSIGNMENT_SUBMISSIONS, get_submission_status)
-    return "valid"
+    sub_status = get_submission_status(ev, item_id, sdt, sid, item_type)
+    clean_description(ev, item_id, item_type, sdt, sid, sub_status)
+    add_status_symbol(ev, item_type, sub_status)
+    assignment_stack_times[sdt.date()] += EVENT_LENGTH
+    return "valid", ev, item_id
 
 @app.get("/fetch")
 @logger.catch
@@ -132,7 +132,7 @@ def proxy_ics():
         new_events = 0
 
         for ev in cal.walk("VEVENT"):
-            res = process_event(ev, assignment_stack_times)
+            res, ev_new, item_id = process_event(ev, assignment_stack_times)
             match res:
                 case "invalid":
                     continue
@@ -142,6 +142,8 @@ def proxy_ics():
                     old_events += 1
                 case "new":
                     new_events += 1
+                case "valid":
+                    ev.update(ev_new)
 
         logger.info(f'Skipped {old_events} old events and {new_events} new events.')
 
@@ -149,11 +151,11 @@ def proxy_ics():
 
     # Append custom events (if any)
     try:
-        from utils_custom_events import load_custom_events, build_custom_event
+        from utils_custom_events import load_custom_events, add_custom
         custom_events = load_custom_events()
         for cev in custom_events:
             try:
-                ve = build_custom_event(cev, assignment_stack_times)
+                ve = add_custom(cev, assignment_stack_times)
                 if ve is None:
                     continue
                 # Support multiple events for repeats with per-date stacking

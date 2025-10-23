@@ -51,8 +51,7 @@ def set_due_time(ev, dt, hhmm: time):
         del ev["DURATION"]
 
 
-def clean_description(ev, item_id=None, item_type=None, sdt=None, sid=None, assignment_submissions=None,
-                      get_submission_status_func=None):
+def clean_description(ev, item_id, item_type, sdt, sid, submission_status):
     desc = ev.get("DESCRIPTION", "")
     desc = re.sub(RE_LINK_ASSIGN_OR_EVENT, "", desc)
     desc = re.sub(RE_LINK_DISCUSSION, "", desc)
@@ -64,8 +63,7 @@ def clean_description(ev, item_id=None, item_type=None, sdt=None, sid=None, assi
     if item_type in ["assignment", "discussion"] and item_id:
         # Check if item is already marked as done
         is_marked_done = False
-        if assignment_submissions and get_submission_status_func and sdt and sid:
-            submission_status = get_submission_status_func(ev, item_id, sdt, sid, assignment_submissions, item_type)
+        if sdt and sid:
             is_marked_done = (submission_status == "✅")
 
         occ_token = get_occ_token(sdt)
@@ -90,13 +88,11 @@ def clean_description(ev, item_id=None, item_type=None, sdt=None, sid=None, assi
     ev["DESCRIPTION"] = desc.replace("\n\n\n\n", "\n\n")
 
 
-def add_status_symbol(ev, sdt, item_id, item_type, sid, ASSIGNMENT_SUBMISSIONS, get_submission_status_func):
+def add_status_symbol(ev, item_type, submission_status):
     if item_type == "assignment":
-        submission_status = get_submission_status_func(ev, item_id, sdt, sid, ASSIGNMENT_SUBMISSIONS, item_type)
         ev["SUMMARY"] = f"{submission_status} {ev['SUMMARY']}"
     elif item_type == "discussion":
         # Check if discussion is manually marked as done
-        submission_status = get_submission_status_func(ev, item_id, sdt, sid, ASSIGNMENT_SUBMISSIONS, item_type)
         if submission_status == "✅":
             ev["SUMMARY"] = f"✅ {ev['SUMMARY']}"
         else:

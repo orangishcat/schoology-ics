@@ -288,7 +288,6 @@ def get_submission_status(
         item_id: str,
         due_date: datetime,
         section_id: str,
-        assignment_submissions: dict,
         item_type: str = "assignment"
 ) -> str:
     """
@@ -312,30 +311,34 @@ def get_submission_status(
     item_id_str = str(item_id)
     occ_token = normalize_occurrence_token(get_occ_token(due_date))
     manual_entry = MANUAL_MARKS.get(item_id_str)
+    is_custom = item_id.startswith("cst-")
 
     if isinstance(manual_entry, dict):
         completed = bool(occ_token) and manual_entry.get(occ_token, False)
-        logger.info(f"status_check {name} occ={occ_token} -> {completed}")
         if completed:
+            logger.debug(f"status_check {name} custom -> {is_custom} occ={occ_token} -> {completed}")
             return "✅"
     elif manual_entry:
-        logger.info(f"status_check {name} manual -> True")
+        logger.debug(f"status_check {name} custom -> {is_custom} manual -> True")
         return "✅"
 
     overdue = due_date < datetime.now(tz=CURRENT_TZ)
     uncompleted_symbol = "‼️" if overdue else "⚠️"
+    if is_custom:
+        logger.debug(f"status_check {name} custom -> {uncompleted_symbol}")
+        return uncompleted_symbol
 
     # Only use API requests if assignment can be submitted, is unsubmitted, and cache stale
-    if cached_submission := assignment_submissions.get(item_id):
+    if cached_submission := ASSIGNMENT_SUBMISSIONS.get(item_id):
         if cached_submission.get("has_submission", False):
             return "✅"
         elif item_type == "discussion":
-            logger.info(f"status_check {name} cached discussion -> 💬")
+            logger.debug(f"status_check {name} cached discussion -> 💬")
             return "💬"
         elif (cached_submission.get("submissions_disabled", False) or
               not cached_submission.get("allow_dropbox", True) or
               cached_submission.get("dropbox_locked", False)):
-            logger.info(f"status_check {name} cached disabled -> -")
+            logger.debug(f"status_check {name} cached disabled -> -")
             return "-"
 
         if checked_at := cached_submission.get("checked_at"):
@@ -345,7 +348,7 @@ def get_submission_status(
                 if age <= SUBMISSION_CACHE_MAX_AGE_SECS:
                     return uncompleted_symbol
             except Exception:
-                logger.info(f"status_check cached {name} invalid time {checked_at} -> {uncompleted_symbol}")
+                logger.debug(f"status_check cached {name} invalid time {checked_at} -> {uncompleted_symbol}")
 
     # Custom items or missing section_id: avoid API calls, base on cache/time only
     try:
@@ -367,7 +370,7 @@ def get_submission_status(
             has_submission = bool(result.get("has_submission", False))
             submissions_disabled = bool(result.get("submissions_disabled", False))
 
-        assignment_submissions[item_id] = {
+        ASSIGNMENT_SUBMISSIONS[item_id] = {
             "has_submission": has_submission,
             "submissions_disabled": submissions_disabled,
             "checked_at": datetime.now().isoformat()
@@ -376,26 +379,25 @@ def get_submission_status(
         try:
             if CACHE_FILE.exists():
                 cached = json.loads(CACHE_FILE.read_text())
-                cached["assignment_submissions"] = assignment_submissions
+                cached["assignment_submissions"] = ASSIGNMENT_SUBMISSIONS
                 CACHE_FILE.write_text(json.dumps(cached, indent=2))
         except Exception as e:
             logger.error(f"Failed to update submission cache: {e}")
 
         if submissions_disabled:
-            logger.info(f"status_check API {name} disabled -> -")
+            logger.debug(f"status_check {name} API disabled -> -")
             return "-"
         res = "✅" if has_submission else uncompleted_symbol
-        logger.debug(f"status_check {item_id} API result -> {res}")
+        logger.info(f"status_check {item_id} API result -> {res}")
         return res
 
     except Exception as e:
         if is_offline_error(e):
             ind = offline_indicator(e) or NO_WIFI_MSG
-            logger.info(ind)
-            logger.info(f"status_check {name} offline -> ?")
+            logger.debug(f"status_check {name} offline -> {ind}")
             return "?"
-        logger.error(f"Error checking submission status: {e}")
-        logger.info(f"status_check {name} exception -> ?")
+        logger.warning(f"Error checking submission status: {e}")
+        logger.debug(f"status_check {name} exception -> ?")
         return "?"
 
 

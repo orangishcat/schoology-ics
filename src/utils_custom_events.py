@@ -7,7 +7,7 @@ from icalendar import Event, vDatetime
 
 from config import USER_DATA_FILE, CURRENT_TZ, EVENT_LENGTH, get_stack_events, REPEAT_DAYS, BASE_URL
 from ical_helpers import course_due_time, set_due_time, clean_description, add_status_symbol
-from schoology_api_helpers import ASSIGNMENT_SUBMISSIONS, get_submission_status
+from schoology_api_helpers import _load_user_data, MANUAL_MARKS, get_submission_status
 
 repeat_to_timedelta = {
     "daily": timedelta(days=1),
@@ -72,7 +72,7 @@ def _parse_local_dt(date_str: str, time_str: Optional[str]) -> Optional[datetime
         return None
 
 
-def build_custom_event(cev: Dict[str, Any], assignment_stack_times) -> Union[Event, List[Event], None]:
+def add_custom(cev: Dict[str, Any], assignment_stack_times) -> Union[Event, List[Event], None]:
     """Construct one or more icalendar Event(s) from a stored custom event dict.
 
     When repeating, expands occurrences within a forward horizon and stacks per date.
@@ -141,8 +141,7 @@ def build_custom_event(cev: Dict[str, Any], assignment_stack_times) -> Union[Eve
         def add_months(d: datetime, months: int) -> datetime:
             y = d.year + (d.month - 1 + months) // 12
             m = (d.month - 1 + months) % 12 + 1
-            day = min(d.day, [31,
-                              29 if y % 4 == 0 and (y % 100 != 0 or y % 400 == 0) else 28,
+            day = min(d.day, [31, 29 if y % 4 == 0 and (y % 100 != 0 or y % 400 == 0) else 28,
                               31, 30, 31, 30, 31, 31, 30, 31, 30, 31][m - 1])
             return d.replace(year=y, month=m, day=day)
 
@@ -177,8 +176,9 @@ def build_custom_event(cev: Dict[str, Any], assignment_stack_times) -> Union[Eve
 
             # Decorations
             if item_type == "assignment":
-                clean_description(ne, item_id, "assignment", occ_dt, sid, ASSIGNMENT_SUBMISSIONS, get_submission_status)
-                add_status_symbol(ne, occ_dt, item_id, "assignment", sid, ASSIGNMENT_SUBMISSIONS, get_submission_status)
+                sub_status = get_submission_status(ne, item_id, occ_dt, sid, item_type)
+                clean_description(ne, item_id, "assignment", occ_dt, sid, sub_status)
+                add_status_symbol(ne, "assignment", sub_status)
             else:
                 ne['SUMMARY'] = f"🗓 {ne['SUMMARY']}"
             events.append(ne)
@@ -194,8 +194,9 @@ def build_custom_event(cev: Dict[str, Any], assignment_stack_times) -> Union[Eve
         sdt_val = None
 
     if item_type == "assignment":
-        clean_description(ev, item_id, "assignment", sdt_val, sid, ASSIGNMENT_SUBMISSIONS, get_submission_status)
-        add_status_symbol(ev, sdt_val, item_id, "assignment", sid, ASSIGNMENT_SUBMISSIONS, get_submission_status)
+        sub_status = get_submission_status(ev, item_id, sdt, sdt_val, item_type)
+        clean_description(ev, item_id, "assignment", sdt_val, sid, sub_status)
+        add_status_symbol(ev, "assignment", sub_status)
     else:
         # Label events visually
         ev['SUMMARY'] = f"🗓 {ev['SUMMARY']}"
