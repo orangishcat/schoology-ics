@@ -51,7 +51,6 @@ def load_custom_events() -> List[Dict[str, Any]]:
     idx = bisect_left(sorted_evs, date_now, key=date_key)
     smaller, larger = sorted_evs[:idx], sorted_evs[idx:]
     smaller.reverse()
-    larger.reverse()
     return larger + smaller
 
 
