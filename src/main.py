@@ -19,7 +19,7 @@ app = Flask(__name__, template_folder=str((Path(__file__).parent / "templates").
 app.secret_key = "scal-secret-key"
 
 
-def process_event(ev: Event, assignment_stack_times: defaultdict) -> tuple[Literal["invalid", "missing", "valid", "old", "new"], Event, str | None]:
+def process_event(ev: Event, assignment_stack_times: defaultdict) -> tuple[Literal["invalid", "missing", "valid", "old", "new"], Event, str | None, datetime | None]:
     ev = ev.copy()
     fields = [
         str(ev.get("URL", "")),
@@ -52,18 +52,18 @@ def process_event(ev: Event, assignment_stack_times: defaultdict) -> tuple[Liter
 
     if not item_id:
         logger.warning(f"Event does not have Schoology URL: {ev}")
-        return "invalid", ev, item_id
+        return "invalid", ev, item_id, None
 
     # Adjust DTSTART/DTEND time on this event
     dtstart = ev.get("DTSTART")
     if not dtstart:
         logger.warning(f"Event does not have DTSTART: {ev}")
-        return "invalid", ev, item_id
+        return "invalid", ev, item_id, None
     if (now_local := datetime.now(tz=CURRENT_TZ)) - (
             event_start := dtstart.dt.astimezone(CURRENT_TZ)) > timedelta(days=DAYS_BACK):
-        return "old", ev, item_id
+        return "old", ev, item_id, event_start
     elif event_start - now_local > timedelta(days=DAYS_FWD):
-        return "new", ev, item_id
+        return "new", ev, item_id, event_start
 
     sdt = dtstart.dt.astimezone(CURRENT_TZ)
     sid = ITEM_ID_TO_SECTION.get(item_id)
@@ -87,8 +87,7 @@ def process_event(ev: Event, assignment_stack_times: defaultdict) -> tuple[Liter
     sub_status = get_submission_status(ev, item_id, sdt, sid, item_type)
     clean_description(ev, item_id, item_type, sdt, sid, sub_status)
     add_status_symbol(ev, item_type, sub_status)
-    assignment_stack_times[sdt.date()] += EVENT_LENGTH
-    return "valid", ev, item_id
+    return "valid" if sid else "missing", ev, item_id, sdt
 
 @app.get("/fetch")
 @logger.catch
@@ -132,7 +131,7 @@ def proxy_ics():
         new_events = 0
 
         for ev in cal.walk("VEVENT"):
-            res, ev_new, item_id = process_event(ev, assignment_stack_times)
+            res, ev_new, item_id, sdt = process_event(ev, assignment_stack_times)
             match res:
                 case "invalid":
                     continue
@@ -143,6 +142,7 @@ def proxy_ics():
                 case "new":
                     new_events += 1
                 case "valid":
+                    assignment_stack_times[sdt.date()] += EVENT_LENGTH
                     ev.update(ev_new)
 
         logger.info(f'Skipped {old_events} old events and {new_events} new events.')

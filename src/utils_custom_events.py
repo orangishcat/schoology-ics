@@ -1,9 +1,12 @@
 import json
+from bisect import bisect_left
 from calendar import monthrange
 from datetime import datetime, time, timedelta, timezone
+from functools import lru_cache
 from typing import List, Dict, Any, Optional, Union
 
 from icalendar import Event, vDatetime
+from loguru import logger
 
 from config import USER_DATA_FILE, CURRENT_TZ, EVENT_LENGTH, get_stack_events, REPEAT_DAYS, BASE_URL
 from ical_helpers import course_due_time, set_due_time, clean_description, add_status_symbol
@@ -17,22 +20,24 @@ repeat_to_timedelta = {
 }
 
 
-def date_key(e, date_now):
+def date_key(e):
     event_date = datetime.strptime(e.get("date"), "%Y-%m-%d")
     event_time = datetime.strptime(time if (time := e.get("time")) else "23:59", "%H:%M")
     event_dt = event_date.combine(event_date, event_time.time()).replace(tzinfo=CURRENT_TZ)
-    overdue = date_now > event_dt
-    return overdue, event_dt.replace(year=9999 - event_dt.year, month=12 - event_dt.month,
-                                     day=monthrange(event_dt.year, 12 - event_dt.month)[1]
-                                         - event_dt.day) if overdue else event_dt
+    return event_dt
 
 
+@lru_cache(maxsize=1)
 def load_custom_events() -> List[Dict[str, Any]]:
     if not USER_DATA_FILE.exists():
         return []
 
     cached = json.loads(USER_DATA_FILE.read_text())
     evs = cached.get("custom_events", [])
+
+    if not isinstance(evs, list):
+        return []
+
     date_now = datetime.now(tz=CURRENT_TZ)
 
     for e in evs:
@@ -42,7 +47,12 @@ def load_custom_events() -> List[Dict[str, Any]]:
             next_repeat = event_date + (delta // repeat_time.days + 1) * repeat_time
             e["date"] = next_repeat.strftime("%Y-%m-%d")
 
-    return sorted(evs, key=lambda e: date_key(e, date_now)) if isinstance(evs, list) else []
+    sorted_evs = sorted(evs, key=date_key)
+    idx = bisect_left(sorted_evs, date_now, key=date_key)
+    smaller, larger = sorted_evs[:idx], sorted_evs[idx:]
+    smaller.reverse()
+    larger.reverse()
+    return larger + smaller
 
 
 def save_custom_events(events: List[Dict[str, Any]]):
