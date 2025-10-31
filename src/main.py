@@ -191,7 +191,13 @@ def proxy_ics():
                 else:
                     logger.info(f"Successfully found item {item_id} after cache refresh")
 
-                process_event(ev, assignment_stack_times)
+                match process_event(ev, assignment_stack_times):
+                    case "valid" | "missing", ev_new, _, sdt:
+                        assignment_stack_times[sdt.date()] += EVENT_LENGTH
+                        ev.update(ev_new)
+                        cal.add_component(ev)
+                    case _:
+                        continue
 
     return Response(cal.to_ical(), mimetype="text/calendar; charset=utf-8")
 
