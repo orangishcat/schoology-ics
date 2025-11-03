@@ -27,8 +27,13 @@ def date_key(e):
     return event_dt
 
 
+last_cached = None
+
 @lru_cache(maxsize=1)
 def load_custom_events() -> List[Dict[str, Any]]:
+    global last_cached
+    last_cached = datetime.now()
+
     if not USER_DATA_FILE.exists():
         return []
 

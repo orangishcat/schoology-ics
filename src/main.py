@@ -4,6 +4,7 @@ from typing import Literal
 from flask import Flask, request, Response, redirect, url_for, render_template, flash
 from icalendar import Calendar
 
+import utils_custom_events
 from ical_helpers import *
 from schoology_api_helpers import *
 
@@ -405,8 +406,11 @@ def home():
 
 @app.get("/custom")
 def custom_page():
-    events = load_custom_events()
     now_local = datetime.now(tz=CURRENT_TZ)
+    if utils_custom_events.last_cached is not None and now_local - utils_custom_events.last_cached > timedelta(hours=12):
+        load_custom_events.cache_clear()
+
+    events = load_custom_events()
     return render_template(
         "custom.html",
         events=events[:50],
