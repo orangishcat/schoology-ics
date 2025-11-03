@@ -32,7 +32,7 @@ last_cached = None
 @lru_cache(maxsize=1)
 def load_custom_events() -> List[Dict[str, Any]]:
     global last_cached
-    last_cached = datetime.now()
+    date_now = last_cached = datetime.now(tz=CURRENT_TZ)
 
     if not USER_DATA_FILE.exists():
         return []
@@ -42,8 +42,6 @@ def load_custom_events() -> List[Dict[str, Any]]:
 
     if not isinstance(evs, list):
         return []
-
-    date_now = datetime.now(tz=CURRENT_TZ)
 
     for e in evs:
         event_date = datetime.strptime(e["date"], "%Y-%m-%d").date()
