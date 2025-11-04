@@ -10,7 +10,7 @@
   {% if extra_css %}{{ extra_css|safe }}{% endif %}
   {% if extra_head %}{{ extra_head|safe }}{% endif %}
 </head>
-<body>
+<body class="season-{{ season }}">
   <header>
     <nav class="tabs">
       <a href="/" class="{% if request.path=='/' %}active{% endif %}">Home</a>

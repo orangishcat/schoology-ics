@@ -1,4 +1,5 @@
 from collections import defaultdict
+from datetime import date
 from typing import Literal
 
 from flask import Flask, request, Response, redirect, url_for, render_template, flash
@@ -18,6 +19,25 @@ except Exception:
 # ------------------ APP ------------------
 app = Flask(__name__, template_folder=str((Path(__file__).parent / "templates").resolve()))
 app.secret_key = "scal-secret-key"
+
+
+def determine_season(today: date) -> str:
+    """Return the current season name based on the local date."""
+    month_day = (today.month, today.day)
+    if (3, 20) <= month_day < (6, 21):
+        return "spring"
+    if (6, 21) <= month_day < (9, 23):
+        return "summer"
+    if (9, 23) <= month_day < (12, 21):
+        return "autumn"
+    return "winter"
+
+
+@app.context_processor
+def inject_theme():
+    """Provide seasonal theme information to all templates."""
+    today = datetime.now(tz=CURRENT_TZ).date()
+    return {"season": determine_season(today)}
 
 
 def process_event(ev: Event, assignment_stack_times: defaultdict) -> tuple[Literal["invalid", "missing", "valid", "old", "new"], Event, str | None, datetime | None]:

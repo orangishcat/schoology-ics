@@ -1,16 +1,14 @@
 import json
 from bisect import bisect_left
-from calendar import monthrange
 from datetime import datetime, time, timedelta, timezone
 from functools import lru_cache
 from typing import List, Dict, Any, Optional, Union
 
 from icalendar import Event, vDatetime
-from loguru import logger
 
 from config import USER_DATA_FILE, CURRENT_TZ, EVENT_LENGTH, get_stack_events, REPEAT_DAYS, BASE_URL
 from ical_helpers import course_due_time, set_due_time, clean_description, add_status_symbol
-from schoology_api_helpers import _load_user_data, MANUAL_MARKS, get_submission_status
+from schoology_api_helpers import get_submission_status
 
 repeat_to_timedelta = {
     "daily": timedelta(days=1),
