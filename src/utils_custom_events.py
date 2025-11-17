@@ -65,6 +65,7 @@ def save_custom_events(events: List[Dict[str, Any]]):
                 cached = {}
         cached["custom_events"] = events
         USER_DATA_FILE.write_text(json.dumps(cached, indent=2))
+        load_custom_events.cache_clear()
     except Exception:
         pass
 
