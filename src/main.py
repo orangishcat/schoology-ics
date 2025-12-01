@@ -5,7 +5,7 @@ from typing import Literal
 from flask import Flask, request, Response, redirect, url_for, render_template, flash
 from icalendar import Calendar
 
-import utils_custom_events
+import utils
 from ical_helpers import *
 from schoology_api_helpers import *
 
@@ -40,7 +40,8 @@ def inject_theme():
     return {"season": determine_season(today)}
 
 
-def process_event(ev: Event, assignment_stack_times: defaultdict) -> tuple[Literal["invalid", "missing", "valid", "old", "new"], Event, str | None, datetime | None]:
+def process_event(ev: Event, assignment_stack_times: defaultdict) -> tuple[
+    Literal["invalid", "missing", "valid", "old", "new"], Event, str | None, datetime | None]:
     ev = ev.copy()
     fields = [
         str(ev.get("URL", "")),
@@ -80,15 +81,14 @@ def process_event(ev: Event, assignment_stack_times: defaultdict) -> tuple[Liter
     if not dtstart:
         logger.warning(f"Event does not have DTSTART: {ev}")
         return "invalid", ev, item_id, None
-    if (now_local := datetime.now(tz=CURRENT_TZ)) - (
-            event_start := dtstart.dt.astimezone(CURRENT_TZ)) > timedelta(days=DAYS_BACK):
-        return "old", ev, item_id, event_start
-    elif event_start - now_local > timedelta(days=DAYS_FWD):
-        return "new", ev, item_id, event_start
 
-    sdt = dtstart.dt.astimezone(CURRENT_TZ)
+    sdt = utils.normalize_dt(dtstart.dt, CURRENT_TZ)
+    if (now_local := datetime.now(tz=CURRENT_TZ)) - sdt > timedelta(days=DAYS_BACK):
+        return "old", ev, item_id, sdt
+    elif sdt - now_local > timedelta(days=DAYS_FWD):
+        return "new", ev, item_id, sdt
+
     sid = ITEM_ID_TO_SECTION.get(item_id)
-
     course_title = None
     desired = None
 
@@ -109,6 +109,7 @@ def process_event(ev: Event, assignment_stack_times: defaultdict) -> tuple[Liter
     clean_description(ev, item_id, item_type, sdt, sid, sub_status)
     add_status_symbol(ev, item_type, sub_status)
     return "valid" if sid else "missing", ev, item_id, sdt
+
 
 @app.get("/fetch")
 @logger.catch
@@ -172,7 +173,7 @@ def proxy_ics():
 
     # Append custom events (if any)
     try:
-        from utils_custom_events import load_custom_events, add_custom
+        from utils import load_custom_events, add_custom
         custom_events = load_custom_events()
         for cev in custom_events:
             try:
@@ -196,7 +197,7 @@ def proxy_ics():
     if missing_items and not cache_refreshed:
         new_items = [
             f"{ev.get("SUMMARY")} {ev.get("DTSTART")}" for _, ev in missing_items if
-            (event_start := ev.get("DTSTART")) and event_start.dt.astimezone(CURRENT_TZ) > datetime.now(tz=CURRENT_TZ)
+            (event_start := ev.get("DTSTART")) and utils.normalize_dt(event_start.dt, CURRENT_TZ) > datetime.now(tz=CURRENT_TZ)
         ]
 
         logger.info(
@@ -371,7 +372,7 @@ def mark_overdue_assignments():
 
 # ------------------ Homepage: Dashboard --------------
 
-from utils_custom_events import load_custom_events, save_custom_events
+from utils import load_custom_events, save_custom_events
 
 
 @app.get("/")
@@ -390,7 +391,8 @@ def home():
         manual_item_ids = {
             str(item_id)
             for item_id, mark_val in MANUAL_MARKS.items()
-            if (isinstance(mark_val, dict) and any(mark_val.values())) or (not isinstance(mark_val, dict) and bool(mark_val))
+            if (isinstance(mark_val, dict) and any(mark_val.values())) or (
+                        not isinstance(mark_val, dict) and bool(mark_val))
         }
 
         submitted = 0
@@ -427,7 +429,7 @@ def home():
 @app.get("/custom")
 def custom_page():
     now_local = datetime.now(tz=CURRENT_TZ)
-    if (lc := utils_custom_events.last_cached) is not None and now_local - lc > timedelta(hours=12):
+    if (lc := utils.last_cached) is not None and now_local - lc > timedelta(hours=12):
         load_custom_events.cache_clear()
 
     events = load_custom_events()

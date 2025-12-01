@@ -1,6 +1,5 @@
 import time as _time
 
-import schoolopy
 from flask import abort
 from icalendar import Event
 from requests_oauthlib import OAuth1
@@ -10,13 +9,6 @@ from manual_mark_helpers import get_occ_token, normalize_occurrence_token
 
 
 # ------------------ SCHOOL0GY API -------------
-def get_schoology_client():
-    """Auth’d schoolopy client."""
-    if not (SCHO_CONSUMER_KEY and SCHO_CONSUMER_SECRET):
-        abort(500, "Set SCHOOLOGY_KEY and SCHOOLOGY_SECRET env vars.")
-    return schoolopy.Schoology(schoolopy.Auth(SCHO_CONSUMER_KEY, SCHO_CONSUMER_SECRET))
-
-
 def oauth():
     """OAuth1 session for Schoology requests."""
     if not (SCHO_CONSUMER_KEY and SCHO_CONSUMER_SECRET):

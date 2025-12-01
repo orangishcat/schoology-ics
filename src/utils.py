@@ -3,6 +3,7 @@ from bisect import bisect_left
 from datetime import datetime, time, timedelta, timezone
 from functools import lru_cache
 from typing import List, Dict, Any, Optional, Union
+from zoneinfo import ZoneInfo
 
 from icalendar import Event, vDatetime
 
@@ -26,6 +27,7 @@ def date_key(e):
 
 
 last_cached = None
+
 
 @lru_cache(maxsize=1)
 def load_custom_events() -> List[Dict[str, Any]]:
@@ -68,6 +70,16 @@ def save_custom_events(events: List[Dict[str, Any]]):
         load_custom_events.cache_clear()
     except Exception:
         pass
+
+
+def normalize_dt(value, tz: ZoneInfo):
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            return value.replace(tzinfo=tz)
+        return value.astimezone(tz)
+
+    naive = datetime.combine(value, time.min)
+    return naive.replace(tzinfo=tz)
 
 
 def _parse_local_dt(date_str: str, time_str: Optional[str]) -> Optional[datetime]:
@@ -200,7 +212,7 @@ def add_custom(cev: Dict[str, Any], assignment_stack_times) -> Union[Event, List
     # Add Schoology-like decorations for assignments
     sdt = ev.get('DTSTART')
     try:
-        sdt_val = sdt.dt.astimezone(CURRENT_TZ) if hasattr(sdt, 'dt') else None
+        sdt_val = normalize_dt(sdt.dt, CURRENT_TZ) if hasattr(sdt, 'dt') else None
     except Exception:
         sdt_val = None
 
