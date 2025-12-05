@@ -18,13 +18,19 @@ except Exception:  # requests may not be imported yet in some contexts
     ReqTimeout = tuple()
     RequestException = tuple()
 
-if not os.getenv("COURSE_DUE_TIMES_JSON"):
-    try:
-        from dotenv import load_dotenv
+if not os.getenv("SCHOOLOGY_SECRET"):
+    import dotenv
 
-        load_dotenv()
-    except Exception:
-        pass
+    if not dotenv.load_dotenv(".env"):
+        print(".env file not found; enter Schoology API details (can be acquired at https://<school>.schoology.com/api):")
+        os.environ["SCHOOLOGY_KEY"] = input("Enter Schoology key: ")
+        os.environ["SCHOOLOGY_SECRET"] = input("Enter Schoology secret: ")
+        os.environ["SCHOOLOGY_UID"] = input("Enter Schoology user id: ")
+        with open(".env", "w") as f:
+            f.write(f"SCHOOLOGY_KEY={os.environ['SCHOOLOGY_KEY']}\n")
+            f.write(f"SCHOOLOGY_SECRET={os.environ['SCHOOLOGY_SECRET']}\n")
+            f.write(f"SCHOOLOGY_UID={os.environ['SCHOOLOGY_UID']}\n")
+
 
 COURSE_DUE_TIMES = json.loads(os.environ.get("COURSE_DUE_TIMES_JSON", "{}"))  # {"Course Substring":"HH:MM", ...}
 RESOURCES_DIR = Path(__file__).parent.parent / "resources"
