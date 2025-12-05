@@ -22,7 +22,11 @@ if not os.getenv("SCHOOLOGY_SECRET"):
     import dotenv
 
     if not dotenv.load_dotenv(".env"):
-        print(".env file not found; enter Schoology API details (can be acquired at https://<school>.schoology.com/api):")
+        print("""Environment variables and .env file not found; enter Schoology API details.
+
+API key and secret can be acquired at https://<school>.schoology.com/api, disable Schoology Plus to avoid webpage not displaying correctly.
+User id can be found from your profile page; the URL should look like https://bins.schoology.com/user/<id>, paste in the id from there.
+""")
         os.environ["SCHOOLOGY_KEY"] = input("Enter Schoology key: ")
         os.environ["SCHOOLOGY_SECRET"] = input("Enter Schoology secret: ")
         os.environ["SCHOOLOGY_UID"] = input("Enter Schoology user id: ")
@@ -30,6 +34,7 @@ if not os.getenv("SCHOOLOGY_SECRET"):
             f.write(f"SCHOOLOGY_KEY={os.environ['SCHOOLOGY_KEY']}\n")
             f.write(f"SCHOOLOGY_SECRET={os.environ['SCHOOLOGY_SECRET']}\n")
             f.write(f"SCHOOLOGY_UID={os.environ['SCHOOLOGY_UID']}\n")
+        print("\nSetup successful!")
 
 
 COURSE_DUE_TIMES = json.loads(os.environ.get("COURSE_DUE_TIMES_JSON", "{}"))  # {"Course Substring":"HH:MM", ...}
