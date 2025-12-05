@@ -1,13 +1,14 @@
 import json
+import logging
 import os
 import re
+import socket
 import sys
 from datetime import datetime, timedelta, time
 from pathlib import Path
 
 from loguru import logger
-import logging
-import socket
+
 try:
     import requests
     from requests.exceptions import ConnectionError as ReqConnectionError, Timeout as ReqTimeout, RequestException
@@ -40,14 +41,14 @@ CACHE_MAX_AGE_SECS = 15 * 60
 SUBMISSION_CACHE_MAX_AGE_SECS = 60 * 60
 
 CURRENT_TZ = datetime.now().astimezone().tzinfo  # local machine tz (e.g., PDT)
-EVENT_LENGTH = timedelta(minutes=50)
+EVENT_LENGTH = timedelta(minutes=60)
 REPEAT_DAYS = 180
 DAYS_BACK=60
 DAYS_FWD=60
 
 # Defaults come from env but are now configurable at runtime via settings page.
 _DEFAULT_STACK_EVENTS = os.getenv("STACK_EVENTS", "1") == "1"
-_DEFAULT_STACK_START_TIME = time(hour=8, minute=25, tzinfo=CURRENT_TZ)
+_DEFAULT_STACK_START_TIME = time(hour=7, minute=0, tzinfo=CURRENT_TZ)
 
 CERT_PATH = os.getenv("CERT_PATH", str(RESOURCES_DIR / "certificates/127.0.0.1.pem"))
 KEY_PATH = os.getenv("KEY_PATH", str(RESOURCES_DIR / "certificates/127.0.0.1-key.pem"))

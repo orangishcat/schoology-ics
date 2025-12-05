@@ -6,6 +6,7 @@ from typing import List, Dict, Any, Optional, Union
 from zoneinfo import ZoneInfo
 
 from icalendar import Event, vDatetime
+from loguru import logger
 
 from config import USER_DATA_FILE, CURRENT_TZ, EVENT_LENGTH, get_stack_events, REPEAT_DAYS, BASE_URL
 from ical_helpers import course_due_time, set_due_time, clean_description, add_status_symbol
@@ -95,6 +96,7 @@ def _parse_local_dt(date_str: str, time_str: Optional[str]) -> Optional[datetime
         return None
 
 
+@logger.catch
 def add_custom(cev: Dict[str, Any], assignment_stack_times) -> Union[Event, List[Event], None]:
     """Construct one or more icalendar Event(s) from a stored custom event dict.
 
@@ -109,6 +111,7 @@ def add_custom(cev: Dict[str, Any], assignment_stack_times) -> Union[Event, List
     repeat = (cev.get("repeat") or "none").strip().lower()
 
     if not date_str:
+        logger.warning(f"Custom event {name} missing date: {date_str}")
         return None
 
     # Base identifiers used for decoration
@@ -125,6 +128,7 @@ def add_custom(cev: Dict[str, Any], assignment_stack_times) -> Union[Event, List
     # When stacking is enabled, always stack regardless of an explicit time.
     local_dt = _parse_local_dt(date_str, (time_str or None))
     if local_dt is None:
+        logger.warning(f"Failed to parse date/time of custom event {name}: {date_str} {time_str}")
         return None
 
     def _apply_time_for_date(target_ev: Event, local_dt_for_day: datetime):
@@ -217,7 +221,7 @@ def add_custom(cev: Dict[str, Any], assignment_stack_times) -> Union[Event, List
         sdt_val = None
 
     if item_type == "assignment":
-        sub_status = get_submission_status(ev, item_id, sdt, sdt_val, item_type)
+        sub_status = get_submission_status(ev, item_id, sdt_val, sid, item_type)
         clean_description(ev, item_id, "assignment", sdt_val, sid, sub_status)
         add_status_symbol(ev, "assignment", sub_status)
     else:
