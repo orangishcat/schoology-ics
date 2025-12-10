@@ -90,8 +90,8 @@ def _parse_local_dt(date_str: str, time_str: Optional[str]) -> Optional[datetime
             t = datetime.strptime(time_str, "%H:%M").time()
             return datetime.combine(d, t).replace(tzinfo=CURRENT_TZ)
         else:
-            # No time provided; return midnight local for now
-            return datetime.combine(d, time(0, 0, tzinfo=CURRENT_TZ))
+            # No time provided; return 23:59 today as default
+            return datetime.combine(d, time(23, 59, tzinfo=CURRENT_TZ))
     except Exception:
         return None
 
@@ -137,18 +137,19 @@ def add_custom(cev: Dict[str, Any], assignment_stack_times) -> Union[Event, List
             desired_local = assignment_stack_times[key].time()
             assignment_stack_times[key] += EVENT_LENGTH
             set_due_time(target_ev, local_dt_for_day, desired_local)
+            return
+
+        if time_str:
+            start_utc = local_dt_for_day.astimezone(timezone.utc)
+            target_ev['DTSTART'] = vDatetime(start_utc)
+            target_ev['DTEND'] = vDatetime(start_utc + EVENT_LENGTH)
         else:
-            if time_str:
-                start_utc = local_dt_for_day.astimezone(timezone.utc)
-                target_ev['DTSTART'] = vDatetime(start_utc)
-                target_ev['DTEND'] = vDatetime(start_utc + EVENT_LENGTH)
+            desired = course_due_time(course_name) if course_name else None
+            if desired:
+                set_due_time(target_ev, local_dt_for_day, desired)
             else:
-                desired = course_due_time(course_name) if course_name else None
-                if desired:
-                    set_due_time(target_ev, local_dt_for_day, desired)
-                else:
-                    noon = time(12, 0, tzinfo=CURRENT_TZ)
-                    set_due_time(target_ev, local_dt_for_day, noon)
+                noon = time(12, 0, tzinfo=CURRENT_TZ)
+                set_due_time(target_ev, local_dt_for_day, noon)
 
     def _clone_base() -> Event:
         ne = Event()
@@ -198,35 +199,19 @@ def add_custom(cev: Dict[str, Any], assignment_stack_times) -> Union[Event, List
         events: List[Event] = []
         for occ_dt in _expand_dates(local_dt):
             ne = _clone_base()
-            # Apply timing
             _apply_time_for_date(ne, occ_dt)
 
-            # Decorations
-            if item_type == "assignment":
-                sub_status = get_submission_status(ne, item_id, occ_dt, sid, item_type)
-                clean_description(ne, item_id, "assignment", occ_dt, sid, sub_status)
-                add_status_symbol(ne, "assignment", sub_status)
-            else:
-                ne['SUMMARY'] = f"🗓 {ne['SUMMARY']}"
+            sub_status = get_submission_status(ne, item_id, occ_dt, sid, item_type)
+            clean_description(ne, item_id, item_type, occ_dt, sid, sub_status)
+            add_status_symbol(ne, item_type, sub_status)
             events.append(ne)
         return events
     else:
         _apply_time_for_date(ev, local_dt)
 
-    # Add Schoology-like decorations for assignments
-    sdt = ev.get('DTSTART')
-    try:
-        sdt_val = normalize_dt(sdt.dt, CURRENT_TZ) if hasattr(sdt, 'dt') else None
-    except Exception:
-        sdt_val = None
-
-    if item_type == "assignment":
-        sub_status = get_submission_status(ev, item_id, sdt_val, sid, item_type)
-        clean_description(ev, item_id, "assignment", sdt_val, sid, sub_status)
-        add_status_symbol(ev, "assignment", sub_status)
-    else:
-        # Label events visually
-        ev['SUMMARY'] = f"🗓 {ev['SUMMARY']}"
+    sub_status = get_submission_status(ev, item_id, local_dt, sid, item_type)
+    clean_description(ev, item_id, item_type, local_dt, sid, sub_status)
+    add_status_symbol(ev, item_type, sub_status)
 
     # Apply simple recurrence rules if requested
     if repeat in {"daily", "weekly", "monthly", "yearly"}:

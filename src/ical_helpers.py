@@ -1,7 +1,7 @@
-from datetime import timezone
+from datetime import timezone, date
 from typing import Optional
 
-from icalendar import vDatetime, vDate
+from icalendar import vDatetime, vDate, Event
 
 from config import *
 from manual_mark_helpers import get_occ_token
@@ -23,7 +23,7 @@ def as_all_day(ev, day):
         del ev["DURATION"]
 
 
-def set_due_time(ev, dt, hhmm: time):
+def set_due_time(ev: Event, dt: datetime | date, hhmm: time):
     """
     Set DTSTART/DTEND to the course-defined time on the event's *local date*,
     then emit in UTC. Default duration = 50 minutes.
