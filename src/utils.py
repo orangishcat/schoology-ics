@@ -202,6 +202,7 @@ def add_custom(cev: Dict[str, Any], assignment_stack_times) -> Union[Event, List
             _apply_time_for_date(ne, occ_dt)
 
             sub_status = get_submission_status(ne, item_id, occ_dt, sid, item_type)
+            ne["description"] += f"\n\nEdit: {BASE_URL}/custom/edit/{item_id}"
             clean_description(ne, item_id, item_type, occ_dt, sid, sub_status)
             add_status_symbol(ne, item_type, sub_status)
             events.append(ne)

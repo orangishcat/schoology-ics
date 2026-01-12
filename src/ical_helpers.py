@@ -56,8 +56,28 @@ def clean_description(ev, item_id, item_type, sdt, sid, submission_status):
     desc = re.sub(RE_LINK_ASSIGN_OR_EVENT, "", desc)
     desc = re.sub(RE_LINK_DISCUSSION, "", desc)
 
+    def _fmt_date(d: date) -> str:
+        return d.strftime("%a, %b %-d")
+
     if sdt:
-        desc = sdt.strftime("📅 %a, %b %-d at %-I:%M %p") + "\n\n" + desc
+        display = None
+        dtstart = ev.get("DTSTART")
+        dtend = ev.get("DTEND")
+        if dtstart:
+            ds = dtstart.dt
+            if isinstance(ds, date) and not isinstance(ds, datetime):
+                end_date = None
+                if dtend:
+                    de = dtend.dt
+                    if isinstance(de, date) and not isinstance(de, datetime):
+                        end_date = de
+                if end_date and end_date != ds:
+                    display = f"{_fmt_date(ds)} to {_fmt_date(end_date)}"
+                else:
+                    display = _fmt_date(ds)
+        if display is None:
+            display = sdt.strftime("%a, %b %-d at %-I:%M %p")
+        desc = f"📅 {display}\n\n" + desc
 
     # Add appropriate action links for assignments and discussions
     if item_type in ["assignment", "discussion"] and item_id:

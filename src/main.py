@@ -1,5 +1,4 @@
 from collections import defaultdict
-from datetime import date
 from typing import Literal
 
 from flask import Flask, request, Response, redirect, url_for, render_template, flash
@@ -83,6 +82,16 @@ def process_event(ev: Event, assignment_stack_times: defaultdict) -> tuple[
         return "invalid", ev, item_id, None
 
     sdt = utils.normalize_dt(dtstart.dt, CURRENT_TZ)
+    dtend = ev.get("DTEND")
+    force_all_day = False
+    if dtend:
+        edt = utils.normalize_dt(dtend.dt, CURRENT_TZ)
+        if (edt - sdt) > timedelta(hours=12):
+            force_all_day = True
+            ev["DTSTART"] = vDate(sdt.date())
+            ev["DTEND"] = vDate(edt.date())
+            if "DURATION" in ev:
+                del ev["DURATION"]
     if (now_local := datetime.now(tz=CURRENT_TZ)) - sdt > timedelta(days=DAYS_BACK):
         return "old", ev, item_id, sdt
     elif sdt - now_local > timedelta(days=DAYS_FWD):
@@ -97,9 +106,9 @@ def process_event(ev: Event, assignment_stack_times: defaultdict) -> tuple[
         if course_title:
             ev["LOCATION"] = f"{course_title.split(' - ')[0]}"
 
-    if get_stack_events():
+    if get_stack_events() and not force_all_day:
         desired = assignment_stack_times[sdt.date()].time()
-    elif course_title:
+    elif course_title and not force_all_day:
         desired = course_due_time(course_title) if course_title else None
 
     if desired:
@@ -145,6 +154,13 @@ def proxy_ics():
     missing_items = []
     cache_refreshed = False
 
+    def _is_all_day_event(target_ev: Event) -> bool:
+        dtstart = target_ev.get("DTSTART")
+        if not dtstart:
+            return False
+        ds = dtstart.dt
+        return isinstance(ds, date) and not isinstance(ds, datetime)
+
     def process_events():
         """Process all events, collecting missing items"""
         nonlocal missing_items
@@ -158,14 +174,15 @@ def proxy_ics():
                 case "invalid":
                     continue
                 case "missing":
-                    missing_items.append((item_id, ev))
+                    missing_items.append((item_id, ev, sdt))
                 case "old":
                     old_events += 1
                 case "new":
                     new_events += 1
                 case "valid":
-                    assignment_stack_times[sdt.date()] += EVENT_LENGTH
                     ev.update(ev_new)
+                    if not _is_all_day_event(ev_new):
+                        assignment_stack_times[sdt.date()] += EVENT_LENGTH
 
         logger.info(f'Skipped {old_events} old events and {new_events} new events.')
 
@@ -195,29 +212,32 @@ def proxy_ics():
         pass
 
     if missing_items and not cache_refreshed:
+        earliest_missing_start = min((sdt for _, _, sdt in missing_items if sdt), default=None)
         new_items = [
-            f"{ev.get("SUMMARY")} {ev.get("DTSTART")}" for _, ev in missing_items if
-            (event_start := ev.get("DTSTART")) and utils.normalize_dt(event_start.dt, CURRENT_TZ) > datetime.now(tz=CURRENT_TZ)
+            f"{ev.get('SUMMARY')} {ev.get('DTSTART')}" for _, ev, sdt in missing_items
+            if sdt and sdt > datetime.now(tz=CURRENT_TZ)
         ]
 
         logger.info(
             f"{len(missing_items)} items missing, {new_items} are new")
 
         if new_items:
-            refresh_cache()
+            refresh_start = earliest_missing_start - timedelta(hours=1) if earliest_missing_start else None
+            refresh_cache(use_cache_window=False, window_start_override=refresh_start)
 
-            for item_id, ev in missing_items:
+            for item_id, ev, _ in missing_items:
                 sid = ITEM_ID_TO_SECTION.get(item_id)
                 if not sid:
-                    logger.info(f"Item {item_id}, {ev.get("DESCRIPTION", "")} still not found after cache refresh")
+                    logger.info(f"Item {item_id}, {ev.get('DESCRIPTION', '')} still not found after cache refresh")
                 else:
                     logger.info(f"Successfully found item {item_id} after cache refresh")
 
                 match process_event(ev, assignment_stack_times):
                     case "valid" | "missing", ev_new, _, sdt:
-                        assignment_stack_times[sdt.date()] += EVENT_LENGTH
                         ev.update(ev_new)
                         cal.add_component(ev)
+                        if not _is_all_day_event(ev_new):
+                            assignment_stack_times[sdt.date()] += EVENT_LENGTH
                     case _:
                         continue
 

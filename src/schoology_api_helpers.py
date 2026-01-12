@@ -96,13 +96,17 @@ def check_assignment_submission(assignment_id: str, section_id: str, user_id: st
         }
 
 
-def refresh_cache(use_cache_window: bool = True, collect_events: bool = False):
+def refresh_cache(
+        use_cache_window: bool = True,
+        collect_events: bool = False,
+        window_start_override: datetime | None = None):
     """
     Force refresh and update in-memory maps.
 
     Args:
         use_cache_window: If False, ignore cached generated_at when choosing the event window.
         collect_events: If True, return the list of events fetched during the refresh.
+        window_start_override: If provided, use this datetime as the start of the Schoology event window.
     """
     global SECTION_ID_TO_NAME, ITEM_ID_TO_SECTION, ASSIGNMENT_SUBMISSIONS
     logger.info("Forcing cache refresh...")
@@ -110,6 +114,7 @@ def refresh_cache(use_cache_window: bool = True, collect_events: bool = False):
         force_refresh=True,
         use_cache_window=use_cache_window,
         collect_events=collect_events,
+        window_start_override=window_start_override,
     )
     if collect_events:
         a, b, c, events = data
@@ -157,7 +162,8 @@ def _fetch_user_events_window(user_id: str,
 def load_sections_and_items(
         force_refresh: bool = False,
         use_cache_window: bool = True,
-        collect_events: bool = False
+        collect_events: bool = False,
+        window_start_override: datetime | None = None
 ):
     """
     Build section->name and item->section maps; preserve submissions.
@@ -207,14 +213,27 @@ def load_sections_and_items(
     # 2) Build item map via calendar events (assignments + events)
     now_local = datetime.now(tz=CURRENT_TZ)
 
-    # If cache has generated_at, use that as start; else use now - days_back
+    # If cache has generated_at, use that as start; else use now - days_back unless overridden.
+    if window_start_override:
+        try:
+            if window_start_override.tzinfo:
+                window_start_override = window_start_override.astimezone(CURRENT_TZ)
+            else:
+                window_start_override = window_start_override.replace(tzinfo=CURRENT_TZ)
+        except Exception:
+            window_start_override = None
+
     cache_start = None
     if cached and (ga := cached.get("generated_at")):
         try:
             cache_start = datetime.fromisoformat(ga)
         except Exception:
             cache_start = None
-    window_start = cache_start if (use_cache_window and cache_start) else (now_local - timedelta(days=DAYS_BACK))
+
+    if window_start_override:
+        window_start = window_start_override
+    else:
+        window_start = cache_start if (use_cache_window and cache_start) else (now_local - timedelta(days=DAYS_BACK))
     window_end = now_local + timedelta(days=DAYS_FWD)
 
     item_id_to_section: dict[str, str] = cached.get("item_id_to_section", {})
