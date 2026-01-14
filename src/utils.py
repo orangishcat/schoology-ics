@@ -1,7 +1,6 @@
 import json
 from bisect import bisect_left
 from datetime import datetime, time, timedelta, timezone
-from functools import lru_cache
 from typing import List, Dict, Any, Optional, Union
 from zoneinfo import ZoneInfo
 
@@ -30,7 +29,6 @@ def date_key(e):
 last_cached = None
 
 
-@lru_cache(maxsize=1)
 def load_custom_events() -> List[Dict[str, Any]]:
     global last_cached
     date_now = last_cached = datetime.now(tz=CURRENT_TZ)
@@ -68,7 +66,6 @@ def save_custom_events(events: List[Dict[str, Any]]):
                 cached = {}
         cached["custom_events"] = events
         USER_DATA_FILE.write_text(json.dumps(cached, indent=2))
-        load_custom_events.cache_clear()
     except Exception:
         pass
 

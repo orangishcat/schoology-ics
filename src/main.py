@@ -449,9 +449,6 @@ def home():
 @app.get("/custom")
 def custom_page():
     now_local = datetime.now(tz=CURRENT_TZ)
-    if (lc := utils.last_cached) is not None and now_local - lc > timedelta(hours=12):
-        load_custom_events.cache_clear()
-
     events = load_custom_events()
     return render_template(
         "custom.html",
