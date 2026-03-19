@@ -7,6 +7,7 @@ from icalendar import Calendar
 import utils
 from ical_helpers import *
 from schoology_api_helpers import *
+from schoology_api_helpers import _load_user_data, _save_user_data
 
 try:
     import setproctitle
@@ -147,8 +148,10 @@ def proxy_ics():
 
     current_time = datetime.now(tz=CURRENT_TZ)
     _stack_start = get_stack_start_time()
-    assignment_stack_times = defaultdict(
-        lambda: current_time.replace(hour=_stack_start.hour, minute=_stack_start.minute))
+    assignment_stack_times = defaultdict(lambda: current_time.replace(hour=_stack_start.hour, minute=_stack_start.minute))
+
+    user_data = _load_user_data()
+    prev_missing = user_data.get("prev_missing", [])
 
     # Track missing items and cache refresh state
     missing_items = []
@@ -174,12 +177,17 @@ def proxy_ics():
                 case "invalid":
                     continue
                 case "missing":
-                    missing_items.append((item_id, ev, sdt))
+                    if item_id not in prev_missing:
+                        missing_items.append((item_id, ev, sdt))
+                    else:
+                        logger.debug(f"Previously missing item {item_id} skipped")
                 case "old":
                     old_events += 1
                 case "new":
                     new_events += 1
                 case "valid":
+                    if item_id in prev_missing:
+                        prev_missing.remove(item_id)
                     ev.update(ev_new)
                     if not _is_all_day_event(ev_new):
                         assignment_stack_times[sdt.date()] += EVENT_LENGTH
@@ -229,6 +237,10 @@ def proxy_ics():
                 sid = ITEM_ID_TO_SECTION.get(item_id)
                 if not sid:
                     logger.info(f"Item {item_id}, {ev.get('DESCRIPTION', '')} still not found after cache refresh")
+                    if not user_data.get("prev_missing"):
+                        user_data["prev_missing"] = []
+                    user_data["prev_missing"].append(item_id)
+                    logger.debug(f"Added {item_id} to previously missing items")
                 else:
                     logger.info(f"Successfully found item {item_id} after cache refresh")
 
@@ -241,6 +253,7 @@ def proxy_ics():
                     case _:
                         continue
 
+    _save_user_data(user_data)
     return Response(cal.to_ical(), mimetype="text/calendar; charset=utf-8")
 
 
@@ -253,7 +266,7 @@ def mark_item_done(item_id):
     try:
         # Mark the item as manually completed
         occurrence_token = request.args.get("occ") or None
-        mark_item_as_done(item_id, occurrence_token)
+        mark_item_as_done(str(item_id), occurrence_token)
 
         # Redirect to a simple OK page to avoid cluttering history
         return redirect(url_for('ok_page'), code=303)
@@ -304,6 +317,13 @@ def refresh_item_map():
 @app.get("/ok")
 def ok_page():
     return render_template("ok.html"), 200
+
+
+@app.get("/error")
+def error_page():
+    title = request.args.get("title") or "Error"
+    message = request.args.get("message") or "An error occurred."
+    return render_template("error.html", title=title, message=message), 404
 
 
 @app.get("/mark-overdue")

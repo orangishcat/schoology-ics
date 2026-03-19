@@ -329,6 +329,7 @@ def get_submission_status(
         if completed:
             logger.debug(f"status_check {name} custom -> {is_custom} occ={occ_token} -> {completed}")
             return "✅"
+        logger.debug(f"occ_token={occ_token} does not match {manual_entry}")
     elif manual_entry:
         logger.debug(f"status_check {name} custom -> {is_custom} manual -> True")
         return "✅"
@@ -500,6 +501,7 @@ def unmark_item_as_done(item_id: str, occurrence_token: str | None = None):
         d = _load_user_data()
         manual_raw = d.get("manual_done")
         if not isinstance(manual_raw, dict):
+            logger.warning("manual_done is not a dict, setting to empty dict")
             manual_raw = {}
         item_id_str = str(item_id)
         norm_token = normalize_occurrence_token(occurrence_token)
@@ -517,6 +519,11 @@ def unmark_item_as_done(item_id: str, occurrence_token: str | None = None):
                     manual_raw.pop(item_id_str, None)
                     MANUAL_MARKS.pop(item_id_str, None)
                 logger.info(f"Unmarked item {item_id_str} (occ={norm_token}) as done")
+            elif isinstance(existing, bool):
+                manual_raw.pop(item_id_str, None)
+                MANUAL_MARKS.pop(item_id_str, None)
+                logger.info(f"Unmarked item {item_id_str} (occ={norm_token}) as done")
+                updated = True
             else:
                 logger.info(f"Item {item_id_str} (occ={norm_token}) was not marked as done")
         else:
