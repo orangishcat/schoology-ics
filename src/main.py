@@ -114,6 +114,9 @@ def process_event(ev: Event, assignment_stack_times: defaultdict) -> tuple[
 
     if desired:
         set_due_time(ev, sdt, desired)
+        logger.debug(f"Setting start time of {ev.get("SUMMARY")} to {desired.strftime('%H:%M:%S')}")
+    else:
+        logger.warning(f"No desired start time for {ev.get("SUMMARY")}, skipping change")
 
     sub_status = get_submission_status(ev, item_id, sdt, sid, item_type)
     clean_description(ev, item_id, item_type, sdt, sid, sub_status)
@@ -180,7 +183,10 @@ def proxy_ics():
                     if item_id not in prev_missing:
                         missing_items.append((item_id, ev, sdt))
                     else:
+                        ev.update(ev_new)
                         logger.debug(f"Previously missing item {item_id} skipped")
+                        if not _is_all_day_event(ev_new):
+                            assignment_stack_times[sdt.date()] += EVENT_LENGTH
                 case "old":
                     old_events += 1
                 case "new":
