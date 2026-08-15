@@ -125,7 +125,6 @@ def process_event(ev: Event, assignment_stack_times: defaultdict) -> tuple[
 
 
 @app.get("/fetch")
-@logger.catch
 def proxy_ics():
     """
     /?url=<ICS_URL>[&all_day_1159=1]
@@ -621,5 +620,4 @@ if __name__ == "__main__":
             f"Tip (mkcert): mkcert 127.0.0.1  -> place files under certificates/"
         )
 
-    logger.info("Launched")
     app.run(HOST, PORT, debug=DEBUG, ssl_context=(CERT_PATH, KEY_PATH))

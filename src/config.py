@@ -30,11 +30,12 @@ User id can be found from your profile page; the URL should look like https://bi
         os.environ["SCHOOLOGY_KEY"] = input("Enter Schoology key: ")
         os.environ["SCHOOLOGY_SECRET"] = input("Enter Schoology secret: ")
         os.environ["SCHOOLOGY_UID"] = input("Enter Schoology user id: ")
-        os.environ["CALENDAR_URL"] = input("Enter Schoology calendar url:")
+        os.environ["CALENDAR_URL"] = input("Enter Schoology calendar url: ")
         with open(".env", "w") as f:
-            f.write(f"SCHOOLOGY_KEY={os.environ['SCHOOLOGY_KEY']}\n")
-            f.write(f"SCHOOLOGY_SECRET={os.environ['SCHOOLOGY_SECRET']}\n")
-            f.write(f"SCHOOLOGY_UID={os.environ['SCHOOLOGY_UID']}\n")
+            print(f"SCHOOLOGY_KEY={os.environ['SCHOOLOGY_KEY']}", file=f)
+            print(f"SCHOOLOGY_SECRET={os.environ['SCHOOLOGY_SECRET']}", file=f)
+            print(f"SCHOOLOGY_UID={os.environ['SCHOOLOGY_UID']}", file=f)
+            print(f"CALENDAR_URL={os.environ['CALENDAR_URL']}", file=f)
         print("\nSetup successful!")
 
 
@@ -293,6 +294,8 @@ def update_settings(stack_events: bool | None = None, stack_start_time: str | No
 
 # Server base URL for constructing links
 BASE_URL = f"https://{HOST}:{PORT}"
+
+logger.info(f"Launched; subscribe to {BASE_URL}/fetch in your calendar to load your assignments.")
 
 # ------------------ REGEX ---------------------
 # Named groups so the handler is robust.
