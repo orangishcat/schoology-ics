@@ -1,6 +1,6 @@
 #!/bin/bash
 # --- settings you can tweak ---
-APPDIR="$HOME/PycharmProjects/schoology-ics"
+APPDIR="$(pwd)"
 PY="$APPDIR/.venv/bin/python"
 SCRIPT="$APPDIR/src/main.py"
 NAME="sCal"

@@ -132,9 +132,7 @@ def proxy_ics():
     - Fetches an ICS, retimes Schoology assignment/event/discussion entries per COURSE_DUE_TIMES.
     - Optional: convert 11:59pm entries to true all-day before retiming.
     """
-    src = request.args.get("url")
-    if not src:
-        abort(400, "Provide ?url=<ICS URL>")
+    src = os.environ["CALENDAR_URL"]
 
     # Fetch ICS
     try:

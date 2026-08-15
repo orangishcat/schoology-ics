@@ -30,6 +30,7 @@ User id can be found from your profile page; the URL should look like https://bi
         os.environ["SCHOOLOGY_KEY"] = input("Enter Schoology key: ")
         os.environ["SCHOOLOGY_SECRET"] = input("Enter Schoology secret: ")
         os.environ["SCHOOLOGY_UID"] = input("Enter Schoology user id: ")
+        os.environ["CALENDAR_URL"] = input("Enter Schoology calendar url:")
         with open(".env", "w") as f:
             f.write(f"SCHOOLOGY_KEY={os.environ['SCHOOLOGY_KEY']}\n")
             f.write(f"SCHOOLOGY_SECRET={os.environ['SCHOOLOGY_SECRET']}\n")
