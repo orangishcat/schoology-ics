@@ -13,10 +13,12 @@ Additional features include:
 
 ### Running
 
-To run, import packages from the `uv` package manager and run `main.py`.
+To run, clone the repository, import packages from the `uv` package manager using `uv sync` and run `main.py`.
 
 On Mac, you can use `launch.sh` to run in the background, where it will remain
-active until restarted.
+active until the computer is restarted.
 
-Provide environment variables `SCHOOLOGY_KEY`, `SCHOOLOGY_SECRET`, and
-`SCHOOLOGY_UID` to access Schoology API.
+On the first run, the program will ask you for your Schoology API key, API secret, and user ID.
+
+As an alternative, you can also provide environment variables `SCHOOLOGY_KEY`, `SCHOOLOGY_SECRET`, and
+`SCHOOLOGY_UID` via either command line or a .env file located in the project directory.
